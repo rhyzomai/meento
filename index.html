@@ -1,0 +1,851 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Files Feed</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #111118;
+    --surface2: #1a1a24;
+    --border: rgba(255,255,255,0.07);
+    --accent: #00f5a0;
+    --accent2: #7c6aff;
+    --text: #f0f0f5;
+    --muted: #666680;
+    --danger: #ff4466;
+    --radius: 20px;
+    --card-h: 100dvh;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Syne', sans-serif;
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior: none;
+  }
+
+  /* ── TOP BAR ── */
+  #topbar {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    height: 56px;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 20px;
+    background: linear-gradient(to bottom, rgba(10,10,15,0.98), transparent);
+    pointer-events: none;
+  }
+  #topbar .logo {
+    font-family: 'Space Mono', monospace;
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    color: var(--accent);
+    pointer-events: all;
+  }
+  #topbar .logo span { color: var(--text); }
+  #counter {
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    pointer-events: all;
+  }
+
+  /* ── FEED CONTAINER ── */
+  #feed {
+    position: fixed;
+    inset: 0;
+    overflow-y: scroll;
+    scroll-snap-type: y mandatory;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  #feed::-webkit-scrollbar { display: none; }
+
+  /* ── CARD ── */
+  .card {
+    height: var(--card-h);
+    width: 100%;
+    scroll-snap-align: start;
+    scroll-snap-stop: always;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--surface);
+  }
+
+  /* media fill */
+  .card-media {
+    flex: 1;
+    min-height: 0;
+    position: relative;
+    overflow: hidden;
+    cursor: pointer;
+    background: var(--bg);
+  }
+  .card-media img, .card-media video, .card-media audio-cover {
+    width: 100%; height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .card-media video {
+    object-fit: contain;
+    background: #000;
+  }
+
+  /* generic thumbnail */
+  .thumb-generic {
+    width: 100%; height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    background: radial-gradient(ellipse at 60% 40%, var(--surface2) 0%, var(--bg) 100%);
+  }
+  .thumb-icon {
+    width: 80px; height: 80px;
+    border-radius: 20px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 36px;
+  }
+  .thumb-ext {
+    font-family: 'Space Mono', monospace;
+    font-size: 13px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 2px;
+  }
+
+  /* audio card special */
+  .audio-bg {
+    width: 100%; height: 100%;
+    background: linear-gradient(135deg, #0d0d1a 0%, #1a0d2e 50%, #0d1a2e 100%);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 20px;
+    position: relative;
+    overflow: hidden;
+  }
+  .audio-bg::before {
+    content: '';
+    position: absolute;
+    inset: -50%;
+    background: conic-gradient(from 0deg, transparent 0%, var(--accent2) 5%, transparent 10%,
+      transparent 45%, var(--accent) 50%, transparent 55%);
+    animation: spin 8s linear infinite;
+    opacity: 0.08;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .audio-disc {
+    width: 120px; height: 120px;
+    border-radius: 50%;
+    background: conic-gradient(var(--accent2), var(--accent), var(--accent2));
+    display: flex; align-items: center; justify-content: center;
+    animation: spin 4s linear infinite;
+    box-shadow: 0 0 40px rgba(124,106,255,0.3);
+  }
+  .audio-disc::after {
+    content: '';
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    background: var(--bg);
+  }
+  .audio-waveform {
+    display: flex; gap: 3px; align-items: center; height: 40px;
+  }
+  .audio-waveform span {
+    width: 3px;
+    background: var(--accent);
+    border-radius: 2px;
+    animation: wave 1.2s ease-in-out infinite;
+    opacity: 0.7;
+  }
+  @keyframes wave {
+    0%,100% { height: 6px; opacity: 0.4; }
+    50% { height: 28px; opacity: 1; }
+  }
+
+  /* ── OVERLAY GRADIENT ── */
+  .card-overlay {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 55%;
+    background: linear-gradient(to top, rgba(0,0,0,0.92) 0%, transparent 100%);
+    pointer-events: none;
+    z-index: 2;
+  }
+
+  /* ── CARD INFO ── */
+  .card-info {
+    position: absolute;
+    bottom: 80px; left: 0; right: 72px;
+    padding: 0 18px;
+    z-index: 3;
+  }
+  .card-filename {
+    font-family: 'Syne', sans-serif;
+    font-size: 16px;
+    font-weight: 800;
+    line-height: 1.2;
+    margin-bottom: 6px;
+    text-shadow: 0 1px 8px rgba(0,0,0,0.8);
+    word-break: break-all;
+  }
+  .card-meta {
+    display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+    margin-bottom: 8px;
+  }
+  .badge {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 6px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .badge-ext {
+    background: rgba(0,245,160,0.15);
+    color: var(--accent);
+    border: 1px solid rgba(0,245,160,0.25);
+  }
+  .badge-size {
+    background: rgba(255,255,255,0.06);
+    color: var(--muted);
+    border: 1px solid var(--border);
+  }
+  .card-desc {
+    font-size: 13px;
+    color: rgba(240,240,245,0.7);
+    line-height: 1.5;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  /* ── SIDE ACTIONS ── */
+  .card-actions {
+    position: absolute;
+    right: 12px; bottom: 80px;
+    display: flex; flex-direction: column;
+    gap: 18px; align-items: center;
+    z-index: 3;
+  }
+  .action-btn {
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    background: none; border: none; cursor: pointer; color: var(--text);
+    -webkit-tap-highlight-color: transparent;
+    transition: transform 0.15s;
+  }
+  .action-btn:active { transform: scale(0.85); }
+  .action-icon {
+    width: 44px; height: 44px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.1);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255,255,255,0.12);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+    transition: background 0.2s, transform 0.15s;
+  }
+  .action-btn.liked .action-icon { background: rgba(255,68,102,0.25); }
+  .action-btn.liked .action-icon svg { stroke: var(--danger); fill: var(--danger); }
+  .action-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    color: rgba(255,255,255,0.6);
+  }
+
+  /* ── BOTTOM BAR ── */
+  #bottombar {
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 100;
+    height: 60px;
+    background: linear-gradient(to top, rgba(10,10,15,0.98), transparent);
+    display: flex; align-items: center; justify-content: center;
+    gap: 6px;
+    pointer-events: none;
+  }
+  .dot-nav {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--muted);
+    transition: all 0.3s;
+  }
+  .dot-nav.active {
+    background: var(--accent);
+    width: 18px;
+    border-radius: 3px;
+  }
+
+  /* ── LOADING CARD ── */
+  .card-loading {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 16px;
+    height: 100%;
+    background: var(--bg);
+  }
+  .spinner {
+    width: 40px; height: 40px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  .loading-text {
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    color: var(--muted);
+    letter-spacing: 2px;
+  }
+
+  /* ── EMPTY STATE ── */
+  .card-empty {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 16px; height: 100%;
+    background: var(--bg);
+  }
+  .empty-icon { font-size: 48px; }
+  .empty-text {
+    font-size: 14px; color: var(--muted); text-align: center; max-width: 240px;
+  }
+
+  /* ── PROGRESS BAR ── */
+  #progress-bar {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 200;
+    height: 2px;
+    background: var(--border);
+  }
+  #progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent2), var(--accent));
+    transition: width 0.3s;
+    width: 0%;
+  }
+
+  /* ── TOAST ── */
+  #toast {
+    position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%) translateY(20px);
+    z-index: 300;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 10px 18px;
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    color: var(--text);
+    opacity: 0;
+    transition: all 0.3s;
+    white-space: nowrap;
+    pointer-events: none;
+  }
+  #toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+
+  /* ── INDEX INDICATOR ── */
+  #index-pill {
+    position: fixed; top: 66px; right: 16px; z-index: 100;
+    background: rgba(255,255,255,0.06);
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 4px 10px;
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    color: var(--muted);
+    transition: opacity 0.3s;
+  }
+
+  /* hidden audio elem */
+  audio.bg-audio { display: none; }
+
+  /* click target for open-in-tab */
+  .card-media-link {
+    position: absolute; inset: 0; z-index: 1;
+  }
+</style>
+</head>
+<body>
+
+<div id="progress-bar"><div id="progress-fill"></div></div>
+
+<div id="topbar">
+  <div class="logo">MEENTO<span>.feed</span></div>
+  <div id="counter">—</div>
+</div>
+
+<div id="index-pill">0 / 0</div>
+
+<div id="feed"></div>
+
+<div id="bottombar"></div>
+<div id="toast"></div>
+
+<script>
+/* ═══════════════════════════════════════════════════
+   VAULT FEED  —  infinite-scroll single-page viewer
+═══════════════════════════════════════════════════ */
+
+const SCROLL_JS = 'scrol.js';
+const INFO_DIR  = 'info/';
+const FILES_DIR = 'files/';
+
+const IMAGE_EXTS = ['jpg','jpeg','png','gif','webp','avif','svg','bmp','tiff','ico'];
+const VIDEO_EXTS = ['mp4','webm','ogg','mov','avi','mkv','m4v'];
+const AUDIO_EXTS = ['mp3','wav','ogg','flac','aac','m4a','opus','weba'];
+
+const feed      = document.getElementById('feed');
+const counter   = document.getElementById('counter');
+const indexPill = document.getElementById('index-pill');
+const progressF = document.getElementById('progress-fill');
+const toast     = document.getElementById('toast');
+
+let entries    = [];      // all json file entries loaded from scrol.js
+let rendered   = 0;       // how many cards are in DOM
+let currentIdx = 0;       // currently visible card index
+let isLoading  = false;
+
+// ── UTILITIES ───────────────────────────────────────
+
+function formatBytes(b) {
+  if (!b) return '—';
+  if (b < 1024) return b + ' B';
+  if (b < 1024*1024) return (b/1024).toFixed(1) + ' KB';
+  return (b/(1024*1024)).toFixed(1) + ' MB';
+}
+
+function extIcon(ext) {
+  const e = (ext||'').toLowerCase();
+  if (IMAGE_EXTS.includes(e)) return '🖼️';
+  if (VIDEO_EXTS.includes(e)) return '🎬';
+  if (AUDIO_EXTS.includes(e)) return '🎵';
+  const map = {
+    pdf:'📄', doc:'📝', docx:'📝', xls:'📊', xlsx:'📊',
+    ppt:'📊', pptx:'📊', zip:'🗜️', rar:'🗜️', '7z':'🗜️',
+    txt:'📃', md:'📃', json:'📋', csv:'📋',
+    html:'🌐', js:'⚙️', ts:'⚙️', py:'🐍', java:'☕',
+    exe:'💻', dmg:'💻', apk:'📱',
+  };
+  return map[e] || '📁';
+}
+
+function isImage(ext) { return IMAGE_EXTS.includes((ext||'').toLowerCase()); }
+function isVideo(ext) { return VIDEO_EXTS.includes((ext||'').toLowerCase()); }
+function isAudio(ext) { return AUDIO_EXTS.includes((ext||'').toLowerCase()); }
+
+function showToast(msg, duration=2200) {
+  toast.textContent = msg;
+  toast.classList.add('show');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => toast.classList.remove('show'), duration);
+}
+
+function slugify(filename) {
+  return filename.replace(/[^a-z0-9]/gi,'_').toLowerCase();
+}
+
+function updateProgress() {
+  const pct = entries.length ? ((currentIdx+1)/entries.length)*100 : 0;
+  progressF.style.width = pct + '%';
+  indexPill.textContent = `${currentIdx+1} / ${entries.length}`;
+}
+
+// ── DOT NAV ─────────────────────────────────────────
+
+function updateDots() {
+  const bb = document.getElementById('bottombar');
+  bb.innerHTML = '';
+  const total = Math.min(entries.length, 7);
+  const start = Math.max(0, Math.min(currentIdx - 3, entries.length - total));
+  for (let i = 0; i < total; i++) {
+    const d = document.createElement('div');
+    d.className = 'dot-nav' + ((start + i === currentIdx) ? ' active' : '');
+    bb.appendChild(d);
+  }
+}
+
+// ── DATA LOADING ─────────────────────────────────────
+
+async function loadEntries() {
+  // 1. Try to read scrol.js
+  let data = null;
+  try {
+    const r = await fetch(SCROLL_JS + '?t=' + Date.now());
+    if (r.ok) {
+      const text = (await r.text()).trim();
+      if (text.length > 2) {
+        data = JSON.parse(text);
+      }
+    }
+  } catch(e) { /* will scan info/ */ }
+
+  if (!data || !data.length) {
+    // 2. scrol.js empty/missing → scan info/ folder
+    data = await scanInfoFolder();
+    // save to scrol.js via PUT (works if server allows) or just proceed
+    await saveScrollJS(data);
+  }
+
+  return data || [];
+}
+
+async function scanInfoFolder() {
+  // Fetch directory listing of info/ folder
+  const list = [];
+  try {
+    const r = await fetch(INFO_DIR);
+    if (!r.ok) return list;
+    const html = await r.text();
+    // Parse hrefs ending in .json
+    const matches = [...html.matchAll(/href="([^"]+\.json)"/gi)];
+    for (const m of matches) {
+      const fname = m[1].replace(/^.*\//, '');
+      try {
+        const jr = await fetch(INFO_DIR + fname);
+        if (jr.ok) {
+          const obj = await jr.json();
+          obj._jsonfile = fname;
+          list.push(obj);
+        }
+      } catch(e) {}
+    }
+  } catch(e) {}
+  return list;
+}
+
+async function saveScrollJS(data) {
+  try {
+    await fetch(SCROLL_JS, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data, null, 2)
+    });
+  } catch(e) {
+    // Server may not support PUT; write via POST to a helper or skip silently
+    try {
+      await fetch('save_scroll.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data })
+      });
+    } catch(e2) {}
+  }
+}
+
+// ── CARD CREATION ────────────────────────────────────
+
+function makeCard(entry, index) {
+  const ext   = (entry.extension || '').toLowerCase();
+  const fname = entry._jsonfile || (entry.original_filename ? slugify(entry.original_filename.replace(/\.[^.]+$/,'')) + '.json' : '');
+  const baseName = fname.replace(/\.json$/i,'');
+  const fileUrl  = FILES_DIR + baseName + (ext ? '.' + ext : '');
+  const hash     = entry.public_key || btoa(fname).replace(/[^a-z0-9]/gi,'').substring(0,16);
+
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.dataset.index = index;
+
+  // ── MEDIA SECTION ──
+  const media = document.createElement('div');
+  media.className = 'card-media';
+
+  if (isImage(ext)) {
+    const img = document.createElement('img');
+    img.src = fileUrl;
+    img.alt = entry.original_filename || 'Image';
+    img.loading = 'lazy';
+    img.onerror = () => { img.replaceWith(makeGenericThumb(ext)); };
+    media.appendChild(img);
+  } else if (isVideo(ext)) {
+    const vid = document.createElement('video');
+    vid.src = fileUrl;
+    vid.muted = true;
+    vid.autoplay = false; // will autoplay when card becomes active
+    vid.loop = true;
+    vid.playsInline = true;
+    vid.controls = false;
+    vid.setAttribute('playsinline','');
+    media.appendChild(vid);
+  } else if (isAudio(ext)) {
+    const audioBg = makeAudioVisual();
+    media.appendChild(audioBg);
+    const aud = document.createElement('audio');
+    aud.className = 'bg-audio';
+    aud.src = fileUrl;
+    aud.loop = true;
+    aud.preload = 'none';
+    card.appendChild(aud);
+  } else {
+    media.appendChild(makeGenericThumb(ext));
+  }
+
+  // clickable overlay to open file
+  const link = document.createElement('a');
+  link.className = 'card-media-link';
+  link.href = fileUrl;
+  link.target = '_blank';
+  link.rel = 'noopener noreferrer';
+  link.title = 'Open ' + (entry.original_filename || 'file');
+  media.appendChild(link);
+
+  card.appendChild(media);
+
+  // ── GRADIENT OVERLAY ──
+  const overlay = document.createElement('div');
+  overlay.className = 'card-overlay';
+  card.appendChild(overlay);
+
+  // ── INFO ──
+  const info = document.createElement('div');
+  info.className = 'card-info';
+
+  const fn = document.createElement('div');
+  fn.className = 'card-filename';
+  fn.textContent = entry.original_filename || baseName || 'Untitled';
+  info.appendChild(fn);
+
+  const meta = document.createElement('div');
+  meta.className = 'card-meta';
+  if (ext) {
+    const b1 = document.createElement('span');
+    b1.className = 'badge badge-ext';
+    b1.textContent = ext;
+    meta.appendChild(b1);
+  }
+  if (entry.size) {
+    const b2 = document.createElement('span');
+    b2.className = 'badge badge-size';
+    b2.textContent = formatBytes(entry.size);
+    meta.appendChild(b2);
+  }
+  info.appendChild(meta);
+
+  if (entry.description) {
+    const desc = document.createElement('div');
+    desc.className = 'card-desc';
+    desc.textContent = entry.description;
+    info.appendChild(desc);
+  }
+
+  card.appendChild(info);
+
+  // ── SIDE ACTIONS ──
+  const actions = document.createElement('div');
+  actions.className = 'card-actions';
+
+  // LIKE
+  const likeBtn = makeActionBtn('❤️', 'Like', `
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+    </svg>
+  `);
+  likeBtn.onclick = (e) => {
+    e.stopPropagation();
+    likeBtn.classList.toggle('liked');
+    window.open('likes.php?hash=' + hash + '&action=like', '_blank');
+  };
+  actions.appendChild(likeBtn);
+
+  // COMMENT
+  const commentBtn = makeActionBtn('💬', 'Comment', `
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+    </svg>
+  `);
+  commentBtn.onclick = (e) => {
+    e.stopPropagation();
+    window.open('likes.php?hash=' + hash + '&action=comment', '_blank');
+  };
+  actions.appendChild(commentBtn);
+
+  // SHARE
+  const shareBtn = makeActionBtn('📤', 'Share', `
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+      <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/>
+      <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+    </svg>
+  `);
+  shareBtn.onclick = (e) => {
+    e.stopPropagation();
+    const shareUrl = 'likes.php?hash=' + hash + '&action=share';
+    if (navigator.share) {
+      navigator.share({ title: entry.original_filename, url: shareUrl }).catch(()=>{});
+    } else {
+      navigator.clipboard.writeText(shareUrl).then(() => showToast('Share link copied!')).catch(()=>{});
+      window.open(shareUrl, '_blank');
+    }
+  };
+  actions.appendChild(shareBtn);
+
+  // DOWNLOAD
+  const dlBtn = makeActionBtn('⬇️', 'Save', `
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+      <polyline points="7 10 12 15 17 10"/>
+      <line x1="12" y1="15" x2="12" y2="3"/>
+    </svg>
+  `);
+  dlBtn.onclick = (e) => {
+    e.stopPropagation();
+    const a = document.createElement('a');
+    a.href = fileUrl;
+    a.download = entry.original_filename || baseName + '.' + ext;
+    a.click();
+    showToast('Downloading…');
+  };
+  actions.appendChild(dlBtn);
+
+  card.appendChild(actions);
+
+  return card;
+}
+
+function makeActionBtn(emoji, label, svgHtml) {
+  const btn = document.createElement('button');
+  btn.className = 'action-btn';
+  const icon = document.createElement('div');
+  icon.className = 'action-icon';
+  icon.innerHTML = svgHtml;
+  const lbl = document.createElement('div');
+  lbl.className = 'action-label';
+  lbl.textContent = label;
+  btn.appendChild(icon);
+  btn.appendChild(lbl);
+  return btn;
+}
+
+function makeGenericThumb(ext) {
+  const wrap = document.createElement('div');
+  wrap.className = 'thumb-generic';
+  const icon = document.createElement('div');
+  icon.className = 'thumb-icon';
+  icon.textContent = extIcon(ext);
+  const extLabel = document.createElement('div');
+  extLabel.className = 'thumb-ext';
+  extLabel.textContent = ext || 'file';
+  wrap.appendChild(icon);
+  wrap.appendChild(extLabel);
+  return wrap;
+}
+
+function makeAudioVisual() {
+  const wrap = document.createElement('div');
+  wrap.className = 'audio-bg';
+  const disc = document.createElement('div');
+  disc.className = 'audio-disc';
+  const wf = document.createElement('div');
+  wf.className = 'audio-waveform';
+  for (let i = 0; i < 12; i++) {
+    const s = document.createElement('span');
+    s.style.animationDelay = (i * 0.1) + 's';
+    s.style.animationDuration = (0.8 + Math.random()*0.6) + 's';
+    wf.appendChild(s);
+  }
+  wrap.appendChild(disc);
+  wrap.appendChild(wf);
+  return wrap;
+}
+
+function makeLoadingCard() {
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.innerHTML = `<div class="card-loading"><div class="spinner"></div><div class="loading-text">LOADING...</div></div>`;
+  return card;
+}
+
+function makeEmptyCard() {
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.innerHTML = `<div class="card-empty"><div class="empty-icon">🗂️</div><div class="card-filename" style="text-align:center">No files found</div><div class="empty-text">Place JSON files in the <code style="background:rgba(255,255,255,0.1);padding:2px 6px;border-radius:4px">info/</code> folder to get started.</div></div>`;
+  return card;
+}
+
+// ── INTERSECTION / SCROLL MANAGEMENT ────────────────
+
+let observer;
+
+function setupScrollObserver() {
+  observer = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      const idx = parseInt(e.target.dataset.index);
+      if (e.isIntersecting && e.intersectionRatio > 0.5) {
+        currentIdx = idx;
+        counter.textContent = `${idx+1} of ${entries.length}`;
+        // Hmm — 'entries' here is IntersectionObserverEntry[]; use global
+        counter.textContent = `${idx+1} of ${window._totalEntries||0}`;
+        updateProgress();
+        updateDots();
+        handleMediaPlay(e.target, true);
+        // Preload nearby cards
+        ensureRenderedUpTo(idx + 2);
+      } else {
+        handleMediaPlay(e.target, false);
+      }
+    });
+  }, { root: feed, threshold: 0.5 });
+}
+
+function handleMediaPlay(card, play) {
+  const vid = card.querySelector('video');
+  const aud = card.querySelector('audio.bg-audio');
+  if (vid) { play ? vid.play().catch(()=>{}) : vid.pause(); }
+  if (aud) { play ? aud.play().catch(()=>{}) : aud.pause(); }
+}
+
+function ensureRenderedUpTo(upTo) {
+  const limit = Math.min(upTo, entries.length - 1);
+  while (rendered <= limit) {
+    const card = makeCard(entries[rendered], rendered);
+    feed.appendChild(card);
+    observer.observe(card);
+    rendered++;
+  }
+}
+
+// ── INIT ─────────────────────────────────────────────
+
+async function init() {
+  // Show a loading card first
+  const loadCard = makeLoadingCard();
+  feed.appendChild(loadCard);
+
+  entries = await loadEntries();
+  window._totalEntries = entries.length;
+
+  // Remove loading card
+  feed.removeChild(loadCard);
+
+  if (!entries.length) {
+    feed.appendChild(makeEmptyCard());
+    counter.textContent = 'empty';
+    return;
+  }
+
+  counter.textContent = `1 of ${entries.length}`;
+  setupScrollObserver();
+
+  // Render first 2 cards
+  ensureRenderedUpTo(1);
+  updateProgress();
+  updateDots();
+}
+
+init();
+</script>
+</body>
+</html>

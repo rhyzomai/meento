@@ -1,0 +1,385 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Meento · Mesh File Exchange</title>
+  <style>
+    /* minimalist reset – consistent with Mesh Node style */
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html, body {
+      min-height: 100%;
+      background: #fff;
+      color: #111;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem 1.5rem;
+    }
+
+    /* container */
+    .page {
+      max-width: 42rem;
+      width: 100%;
+    }
+
+    /* header area */
+    header {
+      margin-bottom: 2rem;
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 0.8rem;
+    }
+
+    h1 {
+      font-size: 1.6rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    h1 em {
+      font-weight: 400;
+      color: #555;
+      font-style: normal;
+    }
+
+    .sub {
+      font-size: 0.8rem;
+      color: #777;
+      margin-top: 0.2rem;
+    }
+
+    .head-nav {
+      display: flex;
+      gap: 1rem;
+      align-items: center;
+    }
+
+    .head-nav a {
+      font-size: 0.85rem;
+      color: #0044cc;
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    .head-nav a:hover {
+      text-decoration: underline;
+    }
+
+    /* node status bar (inspired by the original mesh style) */
+    .node-bar {
+      display: flex;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+      margin-bottom: 1.75rem;
+      font-size: 0.8rem;
+      color: #555;
+    }
+
+    .nb-pill {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.25rem 0.6rem;
+      background: #f5f5f5;
+      border-radius: 4px;
+      border: 1px solid #e0e0e0;
+    }
+
+    .nb-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #aaa;
+    }
+
+    .nb-dot.ok {
+      background: #1a8e3f;
+    }
+
+    .nb-dot.blue {
+      background: #0044cc;
+    }
+
+    .nb-val {
+      font-weight: 500;
+    }
+
+    /* project intro card */
+    .intro-card {
+      background: #fafafa;
+      border: 1px solid #eaeaea;
+      border-radius: 8px;
+      padding: 1.2rem 1.5rem;
+      margin-bottom: 2rem;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.02);
+    }
+
+    .intro-card p {
+      font-size: 1rem;
+      line-height: 1.5;
+      color: #1e1e1e;
+    }
+
+    .light-accent {
+      color: #0044cc;
+      font-weight: 500;
+    }
+
+    /* directory grid */
+    .section-title {
+      font-size: 1.2rem;
+      font-weight: 600;
+      margin: 1.2rem 0 0.8rem 0;
+      letter-spacing: -0.2px;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .section-title svg {
+      width: 1.2rem;
+      height: 1.2rem;
+      stroke: #0044cc;
+      stroke-width: 1.8;
+      fill: none;
+    }
+
+    .component-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+      margin-bottom: 2rem;
+    }
+
+    .comp-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      border-bottom: 1px solid #efefef;
+      padding: 0.6rem 0;
+    }
+
+    .comp-name {
+      width: 9rem;
+      font-weight: 600;
+      font-family: ui-monospace, 'Fira Code', monospace;
+      font-size: 0.85rem;
+      color: #0044cc;
+    }
+
+    .comp-desc {
+      flex: 1;
+      font-size: 0.9rem;
+      color: #2c2c2c;
+      line-height: 1.4;
+    }
+
+    .badge {
+      background: #f0f0f0;
+      border-radius: 12px;
+      padding: 0.2rem 0.6rem;
+      font-size: 0.7rem;
+      font-weight: 500;
+      color: #444;
+      margin-left: 0.5rem;
+      white-space: nowrap;
+    }
+
+    /* structure block (files/info) */
+    .struct-panel {
+      background: #ffffff;
+      border: 1px solid #e0e0e0;
+      border-radius: 12px;
+      margin: 1.5rem 0 1rem;
+      overflow: hidden;
+    }
+
+    .struct-header {
+      background: #fafafa;
+      padding: 0.8rem 1.2rem;
+      border-bottom: 1px solid #eee;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .struct-body {
+      padding: 1.2rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+    }
+
+    .struct-item {
+      display: flex;
+      align-items: baseline;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      font-size: 0.9rem;
+    }
+
+    .struct-dir {
+      font-family: monospace;
+      background: #f4f4f4;
+      padding: 0.2rem 0.6rem;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      color: #0044cc;
+    }
+
+    .hash-note {
+      font-size: 0.8rem;
+      color: #666;
+      background: #f8f8f8;
+      padding: 0.4rem 0.8rem;
+      border-radius: 8px;
+      margin-top: 0.25rem;
+    }
+
+    /* extra tip box */
+    .tip-box {
+      background: #f4f9ff;
+      border-left: 3px solid #0044cc;
+      padding: 1rem;
+      border-radius: 8px;
+      margin: 1rem 0 1.5rem;
+      font-size: 0.85rem;
+    }
+
+    footer {
+      border-top: 1px solid #eee;
+      padding-top: 1.2rem;
+      margin-top: 2rem;
+      display: flex;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      font-size: 0.75rem;
+      color: #aaa;
+    }
+
+    hr {
+      margin: 0.5rem 0;
+      border: none;
+      border-top: 1px solid #eaeaea;
+    }
+
+    .inline-code {
+      font-family: "SF Mono", "Fira Code", monospace;
+      background: #f2f2f2;
+      padding: 0.1rem 0.3rem;
+      border-radius: 5px;
+      font-size: 0.8rem;
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <div>
+      <h1>meento <em>· mesh file relay</em></h1>
+      <div class="sub">lightweight architecture · send & receive across nodes</div>
+    </div>
+ <div class="head-nav">
+      <a href="index.php">Index</a> -
+      <a href="projects.html">All projects</a>
+    </div>
+  </header>
+
+  <!-- main description -->
+  <div class="intro-card">
+    <p>
+      <span class="light-accent">Meento</span> aims to create a <strong>lightweight architecture</strong> 
+      and a <strong>simple application</strong> for sending and receiving files.
+      Every node can act as both sender and receiver — files are indexed by SHA256, metadata is stored as JSON.
+    </p>
+    <br>
+    <p>
+ <span class="light-accent">Quick guide</span>
+1) Upload your files using "index.php" (no account required) or "index_full.php" (account creation required).
+2) Open "indexer.php" and click in "Run Sync Engine". So the JSON information of the files will be migrated to MySQL.
+3) Open "feed.php" or "feed_full.php" for a modern view and navigation of content uploaded in your server and in the others.
+    </p>
+  </div>
+
+  <!-- core components (PHP / Java) -->
+  <div class="section-title">
+    <svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill="none">
+      <path d="M4 7 L20 7 M4 12 L20 12 M4 17 L12 17" stroke="currentColor" stroke-linecap="round"/>
+      <rect x="2" y="3" width="20" height="18" rx="2" stroke="currentColor"/>
+    </svg>
+    <span>Core modules & endpoints</span>
+  </div>
+  <div class="component-grid">
+    <div class="comp-row"><div class="comp-name">index.php</div><div class="comp-desk">Serves both to send and receive files – uses <span class="inline-code">POST</span> method. Main entry point for file exchange.</div></div>
+    <div class="comp-row"><div class="comp-name">index_full.php</div><div class="comp-desk">The same of index.php but with account creation and replication.</div></div>
+    <div class="comp-row"><div class="comp-name">indexer.php</div><div class="comp-desk">Get the JSON files from the servers and add to MySQL for quick search.</div></div>
+    <div class="comp-row"><div class="comp-name">view.php</div><div class="comp-desk">Searches for files on the server using JSON metadata (filename, hash, public key).</div></div>
+    <div class="comp-row"><div class="comp-name">user_files.php</div><div class="comp-desk">Lists files sent by each user. Uses the <strong>public key</strong> as unique identifier.</div></div>
+    <div class="comp-row"><div class="comp-name">servers.php</div><div class="comp-desk">Adds a server to <span class="inline-code">servers.txt</span> – extends the mesh reach.</div></div>
+    <div class="comp-row"><div class="comp-name">panel.php</div><div class="comp-desk">Inserts public key + node info. Every uploaded file carries these credentials.</div></div>
+    <div class="comp-row"><div class="comp-name">sync.php</div><div class="comp-desk">Sends <strong>all files</strong> (both <span class="inline-code">files/</span> and <span class="inline-code">info/</span>) to every other server listed in servers.txt.</div></div>
+    <div class="comp-row"><div class="comp-name">spam.php</div><div class="comp-desk">Defines time intervals to control page reload / request throttling.</div></div>
+    <div class="comp-row"><div class="comp-name">meshrank.java</div><div class="comp-desk">Scans all servers, saves to <span class="inline-code">rank.txt</span> the most repeated public keys and servers with highest file count.</div></div>
+    <div class="comp-row"><div class="comp-name">meshblockchain.java</div><div class="comp-desk">Blockchain prototype – used for testing, sketches and experimental consensus.</div></div>
+    <div class="comp-row"><div class="comp-name">WebCrawler.java</div><div class="comp-desk">Download files from sites and store in Meento way (SHA-256, json file with metadata etc).</div></div>
+ 
+
+ </div>
+
+  <!-- File structure section (files/info) -->
+  <div class="section-title">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+      <path d="M3 7v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-6l-2-2H5a2 2 0 0 0-2 2Z" stroke="currentColor"/>
+    </svg>
+    <span>Storage anatomy</span>
+  </div>
+  <div class="struct-panel">
+    <div class="struct-header">
+       directory / hash-based persistence
+    </div>
+    <div class="struct-body">
+      <div class="struct-item">
+        <span class="struct-dir">files/</span>
+        <span>– All uploaded/received files are stored using <strong>SHA256 hash</strong> as filename. No duplicates, content-addressed.</span>
+      </div>
+      <div class="struct-item">
+        <span class="struct-dir">info/</span>
+        <span>– JSON metadata for each file: original name, timestamp, size, and most importantly the <strong>public key</strong> (user identifier).</span>
+      </div>
+      <div class="hash-note">
+         Every JSON file inside <span class="inline-code">info/</span> includes a field <span class="inline-code">"public_key"</span> — equivalent to the user who injected the file into the network.
+      </div>
+      <div class="struct-item">
+        <span class="struct-dir">servers.txt</span>
+        <span>– Plain list of peer nodes. Used by <span class="inline-code">sync.php</span> and discovery routines.</span>
+      </div>
+      <div class="struct-item">
+        <span class="struct-dir">rank.txt</span>
+        <span>– Generated by meshrank.java: aggregates most frequent public keys & most active servers.</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- footer with mesh status -->
+  <footer>
+    <span>meento · mesh node architecture</span>
+    <span>⚡ public key mesh · sync enabled</span>
+    <span>📄 servers.txt | files/ | info/</span>
+  </footer>
+</div>
+</body>
+</html>

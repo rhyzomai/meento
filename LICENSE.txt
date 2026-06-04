@@ -1,0 +1,17 @@
+MEENTO LICENSE 1.0
+------------------
+
+FREE : For personal use, institutional, or for indirect profit (for example, hosting or distributing the project without modifying the code).
+
+PAID : For companies/institutions that use and modify the code and generate revenue that does not come from donations. A professional account is required.
+
+1)Any and all modifications must maintain credits to the "Meento share"
+project and this same license.
+
+2)Meento Share reserves the right to change any part or detail of this license or its algorithms and mechanisms without prior notice.
+
+3)We are not responsible for bugs or damages arising from the code. We are not responsible for files shared and made available by users.
+By using "meento share" or the code, the user agrees to the terms of use and confirms that they have read and understood all its clauses completely.
+
+
+Meento Share - 2026

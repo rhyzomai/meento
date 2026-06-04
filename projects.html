@@ -1,0 +1,861 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>meento</title>
+<style>
+@import url('data:text/css,');
+
+:root {
+  --chartreuse: #7fff00;
+  --chartreuse-dark: #5ed100;
+  --chartreuse-deep: #3a8400;
+  --bg: #ffffff;
+  --surface: #f5f5f2;
+  --surface2: #eceee8;
+  --border: #d8dbd0;
+  --text: #1a1c16;
+  --muted: #6b7060;
+  --green-mid: #3d7a4a;
+  --green-light: #e6f4e8;
+  --green-tag: #2d6b3a;
+  --orange: #e06a20;
+  --orange-light: #fff0e6;
+  --orange-dark: #a84a0a;
+  --cpp-blue: #3a6080;
+  --spotlight-bg: #0f1f0a;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 13px;
+  line-height: 1.7;
+  min-height: 100vh;
+}
+
+/* ── HERO ── */
+.hero {
+  background: var(--chartreuse);
+  padding: 56px 48px 48px;
+  position: relative;
+  overflow: hidden;
+}
+
+.hero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 39px,
+      rgba(0,0,0,.06) 39px,
+      rgba(0,0,0,.06) 40px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      transparent,
+      transparent 39px,
+      rgba(0,0,0,.06) 39px,
+      rgba(0,0,0,.06) 40px
+    );
+  pointer-events: none;
+}
+
+.hero-inner {
+  position: relative;
+  z-index: 1;
+  max-width: 1100px;
+}
+
+.logo {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 80px;
+  font-weight: 700;
+  letter-spacing: -4px;
+  color: var(--text);
+  line-height: 1;
+  animation: fadeDown .6s ease both;
+}
+
+.logo em {
+  font-style: normal;
+  color: var(--chartreuse-deep);
+}
+
+.hero-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 48px;
+  margin-top: 24px;
+  flex-wrap: wrap;
+}
+
+.tagline {
+  color: var(--text);
+  font-size: 13px;
+  max-width: 380px;
+  line-height: 1.8;
+  opacity: .8;
+  animation: fadeDown .6s .1s ease both;
+  padding-top: 4px;
+}
+
+.hero-stats {
+  display: flex;
+  gap: 32px;
+  flex-wrap: wrap;
+  animation: fadeDown .6s .2s ease both;
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.stat-num {
+  font-family: Georgia, serif;
+  font-size: 36px;
+  font-weight: 700;
+  color: var(--chartreuse-deep);
+  line-height: 1;
+}
+
+.stat-label {
+  font-size: 10px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--text);
+  opacity: .65;
+}
+
+/* ── SPOTLIGHT ── */
+.spotlight-wrap {
+  background: var(--spotlight-bg);
+  padding: 0 48px;
+  animation: fadeUp .7s .3s ease both;
+}
+
+.spotlight-inner {
+  max-width: 1100px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  min-height: 380px;
+}
+
+.spotlight-text {
+  padding: 52px 48px 52px 0;
+  border-right: 1px solid rgba(127,255,0,.12);
+}
+
+.spotlight-eyebrow {
+  font-size: 9px;
+  letter-spacing: .22em;
+  text-transform: uppercase;
+  color: var(--chartreuse);
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.spotlight-eyebrow::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: rgba(127,255,0,.3);
+  max-width: 60px;
+}
+
+.spotlight-title {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 42px;
+  font-weight: 700;
+  color: #ffffff;
+  letter-spacing: -1.5px;
+  line-height: 1.1;
+  margin-bottom: 20px;
+}
+
+.spotlight-title span {
+  color: var(--chartreuse);
+}
+
+.spotlight-desc {
+  color: rgba(255,255,255,.55);
+  font-size: 12px;
+  line-height: 1.9;
+  max-width: 420px;
+  margin-bottom: 28px;
+}
+
+.spotlight-lang {
+  display: inline-block;
+  font-size: 9px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  background: rgba(127,255,0,.15);
+  color: var(--chartreuse);
+  border: 1px solid rgba(127,255,0,.3);
+  padding: 4px 10px;
+  border-radius: 2px;
+}
+
+.spotlight-features {
+  padding: 52px 0 52px 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.sf-item {
+  padding: 18px 0;
+  border-bottom: 1px solid rgba(255,255,255,.06);
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.sf-item:last-child { border-bottom: none; }
+
+.sf-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  background: rgba(127,255,0,.1);
+  border: 1px solid rgba(127,255,0,.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.sf-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: .04em;
+  margin-bottom: 3px;
+  text-transform: uppercase;
+}
+
+.sf-desc {
+  font-size: 11px;
+  color: rgba(255,255,255,.45);
+  line-height: 1.65;
+}
+
+/* ── SECTION LABEL ── */
+.section-label {
+  font-size: 9px;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 44px 48px 20px;
+  max-width: 1196px;
+}
+
+/* ── PROJECT GRID ── */
+.projects {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
+  gap: 1px;
+  background: var(--border);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  max-width: 100%;
+}
+
+.project {
+  background: var(--bg);
+  padding: 28px 32px;
+  position: relative;
+  opacity: 0;
+  animation: fadeUp .5s ease forwards;
+  transition: background .18s;
+}
+
+.project:nth-child(1) { animation-delay: .15s; }
+.project:nth-child(2) { animation-delay: .20s; }
+.project:nth-child(3) { animation-delay: .25s; }
+.project:nth-child(4) { animation-delay: .30s; }
+.project:nth-child(5) { animation-delay: .35s; }
+.project:nth-child(6) { animation-delay: .40s; }
+.project:nth-child(7) { animation-delay: .45s; }
+.project:nth-child(8) { animation-delay: .50s; }
+
+.project:hover { background: var(--surface); }
+.project:hover .project-name { color: var(--green-mid); }
+
+.project-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.project-lang {
+  font-size: 9px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: #fff;
+  background: var(--muted);
+  padding: 2px 7px;
+  border-radius: 2px;
+}
+
+.lang-java { background: var(--orange); }
+.lang-php  { background: var(--green-mid); }
+.lang-cpp  { background: var(--cpp-blue); }
+.lang-php-java { background: linear-gradient(90deg, var(--green-mid) 50%, var(--orange) 50%); }
+
+.project-name {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+  transition: color .2s;
+}
+
+.project-desc {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+/* ── COMPARISON TABLE ── */
+.table-wrap {
+  padding: 0 48px;
+  overflow-x: auto;
+  animation: fadeUp .7s .5s ease both;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+  min-width: 920px;
+}
+
+thead tr {
+  border-bottom: 2px solid var(--border);
+}
+
+th {
+  padding: 12px 14px;
+  text-align: left;
+  color: var(--muted);
+  font-weight: 400;
+  letter-spacing: .05em;
+  white-space: nowrap;
+  font-family: 'Courier New', monospace;
+}
+
+th:first-child {
+  color: var(--text);
+  width: 160px;
+}
+
+td {
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+td:first-child {
+  font-family: Georgia, serif;
+  font-size: 13px;
+  color: var(--text);
+  font-weight: 700;
+}
+
+tr.row-star {
+  background: #f8fff0;
+}
+
+tr.row-star td:first-child {
+  color: var(--green-mid);
+}
+
+tr:hover td { background: var(--surface); }
+tr.row-star:hover td { background: #eef9e4; }
+
+.yes  { color: var(--green-mid); text-align: center; }
+.no   { color: var(--border); text-align: center; }
+.part { color: var(--orange); text-align: center; }
+
+.yes::before  { content: '✓'; font-weight: 700; }
+.no::before   { content: '—'; }
+.part::before { content: '◑'; }
+
+.star-badge {
+  display: inline-block;
+  font-size: 8px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  background: var(--chartreuse);
+  color: var(--chartreuse-deep);
+  padding: 1px 6px;
+  border-radius: 2px;
+  margin-left: 8px;
+  vertical-align: middle;
+  font-family: 'Courier New', monospace;
+  font-weight: 700;
+}
+
+/* ── SUMMARY ── */
+.summary-wrap {
+  padding: 0 48px;
+  margin-top: 1px;
+  animation: fadeUp .7s .65s ease both;
+}
+
+.summary {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-top: 3px solid var(--chartreuse);
+  padding: 40px;
+}
+
+.summary-title {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 26px;
+  color: var(--green-mid);
+  margin-bottom: 18px;
+  letter-spacing: -.5px;
+}
+
+.summary p {
+  color: var(--muted);
+  max-width: 900px;
+  line-height: 1.9;
+  font-size: 12px;
+}
+
+.summary p + p { margin-top: 14px; }
+
+.pill {
+  display: inline-block;
+  background: var(--green-light);
+  color: var(--green-tag);
+  border: 1px solid #c0ddc6;
+  padding: 1px 8px;
+  border-radius: 2px;
+  font-size: 11px;
+}
+
+.pill-orange {
+  background: var(--orange-light);
+  color: var(--orange-dark);
+  border-color: #f0c09a;
+}
+
+/* ── FOOTER ── */
+footer {
+  padding: 40px 48px 48px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin-top: 64px;
+}
+
+.footer-logo {
+  font-family: Georgia, serif;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -1px;
+}
+
+.footer-logo em {
+  font-style: normal;
+  color: var(--chartreuse-dark);
+}
+
+.footer-note {
+  font-size: 10px;
+  letter-spacing: .08em;
+  color: var(--muted);
+}
+
+/* ── Legend strip ── */
+.legend {
+  padding: 0 48px 40px;
+  display: flex;
+  gap: 24px;
+  font-size: 10px;
+  color: var(--muted);
+  align-items: center;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ── ANIMATIONS ── */
+@keyframes fadeDown {
+  from { opacity: 0; transform: translateY(-12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Responsive ── */
+@media (max-width: 720px) {
+  .hero { padding: 40px 24px 36px; }
+  .logo { font-size: 52px; }
+  .section-label { padding: 32px 24px 16px; }
+  .spotlight-wrap { padding: 0 24px; }
+  .spotlight-inner { grid-template-columns: 1fr; }
+  .spotlight-features { padding: 32px 0 40px 0; }
+  .spotlight-text { padding: 40px 0; border-right: none; border-bottom: 1px solid rgba(127,255,0,.12); }
+  .table-wrap { padding: 0 24px; }
+  .summary-wrap { padding: 0 24px; }
+  footer { padding: 32px 24px; }
+  .legend { padding: 0 24px 32px; }
+}
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════════════ HERO ══════════════════════════════ -->
+<header class="hero">
+  <div class="hero-inner">
+    <div class="logo">meento</div>
+    <div class="hero-row">
+      <p class="tagline">A family of lightweight, zero-dependency tools for decentralized file discovery and sharing across distributed networks.</p>
+      <div class="hero-stats">
+        <div class="stat">
+          <div class="stat-num">9</div>
+          <div class="stat-label">projects</div>
+        </div>
+        <div class="stat">
+          <div class="stat-num">3</div>
+          <div class="stat-label">languages</div>
+        </div>
+        <div class="stat">
+          <div class="stat-num">0</div>
+          <div class="stat-label">dependencies</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ══════════════════════════ SPOTLIGHT ════════════════════════════ -->
+<div class="spotlight-wrap">
+  <div class="spotlight-inner">
+    <div class="spotlight-text">
+      <div class="spotlight-eyebrow">★ spotlight project</div>
+      <div class="spotlight-title"><span>Seastar</span><br>File Chunker &amp;<br>P2P Distributor</div>
+      <p class="spotlight-desc">
+        A single-file PHP node that chunks any file, seeds it locally, and distributes every piece to all peers in your network. Supports two distinct transport modes: GET (base64 chunks in the query string) and POST (raw file sent directly — no chunking, no encoding). The file's MD5 becomes its permanent identifier across the entire mesh.
+      </p>
+      <span class="spotlight-lang">PHP · single file</span>
+    </div>
+    <div class="spotlight-features">
+      <div class="sf-item">
+        <div class="sf-icon">⚡</div>
+        <div>
+          <div class="sf-title">Two Transport Modes</div>
+          <div class="sf-desc">GET sends base64 chunks as query-string params (100 B – 8 KB each). POST delivers the raw file whole via multipart upload — no chunking, no base64 overhead.</div>
+        </div>
+      </div>
+      <div class="sf-item">
+        <div class="sf-icon">🔒</div>
+        <div>
+          <div class="sf-title">Integrity-verified Chunks</div>
+          <div class="sf-desc">Every chunk is verified on receipt: <code style="color:var(--chartreuse);font-size:10px">md5(contents) === chunk_hash</code>. Tampered or corrupted chunks are rejected with HTTP 400.</div>
+        </div>
+      </div>
+      <div class="sf-item">
+        <div class="sf-icon">🗂</div>
+        <div>
+          <div class="sf-title">Content-addressed Storage</div>
+          <div class="sf-desc">Files stored as <code style="color:var(--chartreuse);font-size:10px">files/&lt;md5&gt;.&lt;ext&gt;</code>. Chunks indexed in <code style="color:var(--chartreuse);font-size:10px">base64_hash/</code>. Existing files are never overwritten — idempotent by design.</div>
+        </div>
+      </div>
+      <div class="sf-item">
+        <div class="sf-icon">🌐</div>
+        <div>
+          <div class="sf-title">Mesh Distribution</div>
+          <div class="sf-desc">Sends every chunk or file to every peer in <code style="color:var(--chartreuse);font-size:10px">servers.txt</code> in a single operation. Logs new stores, skips, and errors per peer with a full audit trail.</div>
+        </div>
+      </div>
+      <div class="sf-item">
+        <div class="sf-icon">🪪</div>
+        <div>
+          <div class="sf-title">Node Identity</div>
+          <div class="sf-desc">Each node carries a <code style="color:var(--chartreuse);font-size:10px">public_key.txt</code> and <code style="color:var(--chartreuse);font-size:10px">node_info.txt</code> that travel with every transmission and are stored by receiving peers.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════ PROJECTS ════════════════════════════ -->
+<p class="section-label">// all projects</p>
+<div class="projects">
+
+  <div class="project">
+    <div class="project-header">
+      <span class="project-lang lang-php">PHP</span>
+      <div class="project-name">Seastar</div>
+    </div>
+    <p class="project-desc">Single-file PHP mesh node that chunks any file and distributes it to all peers via GET (base64 chunks) or POST (raw file, no encoding). Content-addressed storage, write-once chunk indexes, and full integrity verification on every receive.</p>
+  </div>
+
+  <div class="project">
+    <div class="project-header">
+      <span class="project-lang lang-php">PHP</span>
+      <div class="project-name">Quokka Meento</div>
+    </div>
+    <p class="project-desc">Single-file PHP mesh node that shares known URLs between peers over plain HTTP GET. No database or framework — just cURL, file locks, and a flat-text store with optional IP deduplication.</p>
+  </div>
+
+  <div class="project">
+    <div class="project-header">
+      <span class="project-lang lang-java">Java</span>
+      <div class="project-name">DHT Meento</div>
+    </div>
+    <p class="project-desc">Pure-Java distributed hash table with TCP socket messaging. Nodes auto-discover peers transitively, share a file index, and prune dead hosts — all persisted in plain text, no libraries needed.</p>
+  </div>
+
+  <div class="project">
+    <div class="project-header">
+      <span class="project-lang lang-php-java">Java + PHP</span>
+      <div class="project-name">Seal Meento</div>
+    </div>
+    <p class="project-desc">Java client that fetches file lists from HTTP servers, ranks files by the number of distinct IPs hosting them, broadcasts metadata back to the network, and optionally downloads files to disk.</p>
+  </div>
+
+  <div class="project">
+    <div class="project-header">
+      <span class="project-lang lang-cpp">C++</span>
+      <div class="project-name">Eel Meento</div>
+    </div>
+    <p class="project-desc">C++17 binary that is simultaneously a TCP server and client. Peers exchange file lists via a minimal text protocol and pull only files they don't already have, with a rank command that scores peers by content size.</p>
+  </div>
+
+  <div class="project">
+    <div class="project-header">
+      <span class="project-lang lang-java">Java</span>
+      <div class="project-name">Owl Meento</div>
+    </div>
+    <p class="project-desc">Read-only Java Swing GUI that scans P2P and HTTP endpoints, ranks servers across six criteria (files, downloads, ping, diversity, score), and exports results to JSON — a network observatory tool.</p>
+  </div>
+
+  <div class="project">
+    <div class="project-header">
+      <span class="project-lang lang-java">Java</span>
+      <div class="project-name">WebCrawler</div>
+    </div>
+    <p class="project-desc">Interactive CLI Java crawler that follows links up to a configurable depth, harvests file URLs (images, PDFs, ZIPs, etc.), deduplicates them across runs, and writes results to servers.txt for use by other Meento tools.</p>
+  </div>
+
+  <div class="project">
+    <div class="project-header">
+      <span class="project-lang lang-php">PHP</span>
+      <div class="project-name">Meento PHP</div>
+    </div>
+    <p class="project-desc">One-file PHP file hosting app with SHA-256 content addressing, sharded JSON index (no database), drag-and-drop uploads, live search across shards, and duplicate detection — deployed by copying a single index.php.</p>
+  </div>
+
+  <div class="project">
+    <div class="project-header">
+      <span class="project-lang lang-java">Java</span>
+      <div class="project-name">Ant Meento GUI</div>
+    </div>
+    <p class="project-desc">Full-featured P2P desktop app with RSA identity, a local proof-of-work blockchain ledger for every transfer, DHT bootstrapping from public URLs, drag-and-drop sharing, and direct HTTP downloads — all in one Swing window.</p>
+  </div>
+
+</div>
+
+<!-- ══════════════════════ COMPARISON TABLE ═════════════════════════ -->
+<p class="section-label">// feature comparison</p>
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Project</th>
+        <th>Receive files</th>
+        <th>Send files</th>
+        <th>P2P sockets</th>
+        <th>HTTP GET</th>
+        <th>Peer discovery</th>
+        <th>File index / ranking</th>
+        <th>Identity / crypto</th>
+        <th>GUI</th>
+        <th>Blockchain</th>
+        <th>Lang</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr class="row-star">
+        <td>Seastar <span class="star-badge">new</span></td>
+        <td class="yes"></td>
+        <td class="yes"></td>
+        <td class="no"></td>
+        <td class="yes"></td>
+        <td class="yes"></td>
+        <td class="yes"></td>
+        <td class="part"></td>
+        <td class="no"></td>
+        <td class="no"></td>
+        <td>PHP</td>
+      </tr>
+      <tr>
+        <td>Quokka Meento</td>
+        <td class="yes"></td>
+        <td class="yes"></td>
+        <td class="no"></td>
+        <td class="yes"></td>
+        <td class="yes"></td>
+        <td class="part"></td>
+        <td class="no"></td>
+        <td class="no"></td>
+        <td class="no"></td>
+        <td>PHP</td>
+      </tr>
+      <tr>
+        <td>DHT Meento</td>
+        <td class="yes"></td>
+        <td class="yes"></td>
+        <td class="yes"></td>
+        <td class="no"></td>
+        <td class="yes"></td>
+        <td class="yes"></td>
+        <td class="no"></td>
+        <td class="no"></td>
+        <td class="no"></td>
+        <td>Java</td>
+      </tr>
+      <tr>
+        <td>Seal Meento</td>
+        <td class="yes"></td>
+        <td class="part"></td>
+        <td class="no"></td>
+        <td class="yes"></td>
+        <td class="no"></td>
+        <td class="yes"></td>
+        <td class="no"></td>
+        <td class="no"></td>
+        <td class="no"></td>
+        <td>Java + PHP</td>
+      </tr>
+      <tr>
+        <td>Eel Meento</td>
+        <td class="yes"></td>
+        <td class="yes"></td>
+        <td class="yes"></td>
+        <td class="no"></td>
+        <td class="part"></td>
+        <td class="yes"></td>
+        <td class="no"></td>
+        <td class="no"></td>
+        <td class="no"></td>
+        <td>C++</td>
+      </tr>
+      <tr>
+        <td>Owl Meento</td>
+        <td class="no"></td>
+        <td class="no"></td>
+        <td class="yes"></td>
+        <td class="yes"></td>
+        <td class="yes"></td>
+        <td class="yes"></td>
+        <td class="no"></td>
+        <td class="yes"></td>
+        <td class="no"></td>
+        <td>Java</td>
+      </tr>
+      <tr>
+        <td>WebCrawler</td>
+        <td class="no"></td>
+        <td class="no"></td>
+        <td class="no"></td>
+        <td class="yes"></td>
+        <td class="no"></td>
+        <td class="part"></td>
+        <td class="no"></td>
+        <td class="no"></td>
+        <td class="no"></td>
+        <td>Java</td>
+      </tr>
+      <tr>
+        <td>Meento PHP</td>
+        <td class="yes"></td>
+        <td class="yes"></td>
+        <td class="no"></td>
+        <td class="yes"></td>
+        <td class="no"></td>
+        <td class="yes"></td>
+        <td class="no"></td>
+        <td class="no"></td>
+        <td class="no"></td>
+        <td>PHP</td>
+      </tr>
+      <tr>
+        <td>Ant Meento GUI</td>
+        <td class="yes"></td>
+        <td class="yes"></td>
+        <td class="yes"></td>
+        <td class="yes"></td>
+        <td class="yes"></td>
+        <td class="yes"></td>
+        <td class="yes"></td>
+        <td class="yes"></td>
+        <td class="yes"></td>
+        <td>Java</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+<div class="legend">
+  <div class="legend-item"><span class="yes" style="font-size:12px"></span> supported</div>
+  <div class="legend-item"><span class="part" style="font-size:12px"></span> partial</div>
+  <div class="legend-item"><span class="no" style="font-size:12px;color:#aaa"></span> not supported</div>
+</div>
+
+<!-- ════════════════════════════ SUMMARY ════════════════════════════ -->
+<p class="section-label">// project purpose</p>
+<div class="summary-wrap">
+  <div class="summary">
+    <div class="summary-title">What is Meento?</div>
+    <p>
+      Meento is a collection of independent, single-file tools built around one shared goal: enabling nodes on a network to <span class="pill">discover</span>, <span class="pill">index</span>, and <span class="pill">exchange files</span> without relying on a central server, cloud service, or external dependency. Each subproject explores a different angle — some use raw TCP sockets (DHT, Eel, Ant), others use plain HTTP GET (Quokka, Seal, Meento PHP), and <span class="pill pill-orange">Seastar</span> adds a dedicated chunking and seeding layer on top, combining both GET and POST transports with content-addressed storage.
+    </p>
+    <p>
+      What unites every project is radical simplicity in deployment: no package managers, no Docker images, no databases. State lives in flat text files (<span class="pill">servers.txt</span>, <span class="pill">files.txt</span>) that any tool in the ecosystem can read and write. Peers discover each other transitively, rank content by replication count, and propagate metadata across the mesh using the same lightweight conventions. Ant Meento GUI is the feature-complete flagship — adding RSA identity and a blockchain ledger — while tools like <span class="pill pill-orange">Seastar</span> serve as focused, composable building blocks you can mix and match across the network.
+    </p>
+  </div>
+</div>
+
+<!-- ════════════════════════════ FOOTER ═════════════════════════════ -->
+<footer>
+  <div class="footer-logo">m<em>ee</em>nto</div>
+  <div class="footer-note">zero dependencies · flat-file state · self-hosted · open mesh</div>
+</footer>
+
+</body>
+</html>
