@@ -1,4 +1,5 @@
-http://localhost/meento/index.php
-http://localhost/meento/1/index.php
-http://localhost/meento/index_full.php
-http://localhost/meento/1/index_full.php
+http://meento.atwebpages.com/
+https://meento.neocities.org/
+https://geocities.ws/meento/
+https://meshare.lovable.app/
+

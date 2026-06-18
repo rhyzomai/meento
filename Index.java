@@ -1,358 +1,190 @@
-import com.sun.net.httpserver.HttpExchange;
-import com.sun.net.httpserver.HttpHandler;
-import com.sun.net.httpserver.HttpServer;
-
-import javax.net.ssl.*;
 import java.io.*;
 import java.net.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.security.MessageDigest;
-import java.security.SecureRandom;
-import java.security.cert.X509Certificate;
+import java.time.OffsetDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import com.sun.net.httpserver.*;
 
-// -------------------------------------------------------------------------------
-//  MESH NODE — file replication over HTTP/HTTPS (Java 8 Port)
-//  Single-file application, no external dependencies
-// -------------------------------------------------------------------------------
 public class Index {
 
-    private static final String FILES_DIR = "./files";
-    private static final String INFO_DIR = "./info";
-    private static final String FILES_INDEX = "./files.txt";
-    private static final String SERVERS_FILE = "./servers.txt";
-    private static final String PUB_KEY_FILE = "./public_key.txt";
-    private static final String NODE_INFO_FILE = "./node_info.txt";
-    private static final String DATA_JSON_FILE = "./data.json";
-    private static final int MAX_COMMENT = 1024;
-    private static final List<String> BLOCKED_EXTS = Arrays.asList("php", "php3", "php4", "php5", "php7", "phtml", "phar");
-
-    private static final Object FILES_TXT_LOCK = new Object();
-    private static final Object DATA_JSON_LOCK = new Object();
+    // --- Configuration ---
+    private static final String DIR_FILES = "files";
+    private static final String DIR_INFO = "info";
+    private static final String FILE_INDEX = "files.txt";
+    private static final String FILE_DATA_JSON = "data.json";
+    private static final String FILE_SERVERS = "servers.txt";
+    private static final String FILE_PUB_KEY = "public_key.txt";
+    private static final String FILE_NODE_INFO = "node_info.txt";
+    
+    private static final long MAX_FILE_SIZE = 1073741824L; // 1 GB
+    private static final int MAX_TEXT_LEN = 512;
+    private static final List<String> BLOCKED_EXT = Arrays.asList("php", "php3", "php4", "php5", "php7", "phtml", "phar", "jsp", "class", "jar");
+    private static final int PORT = 8080;
 
     public static void main(String[] args) throws Exception {
-        initDirs();
-        disableSslVerification();
-
-        HttpServer server = HttpServer.create(new InetSocketAddress(8080), 0);
-        server.createContext("/", new RootHandler());
-        server.createContext("/files/", new FilesHandler());
+        bootstrap();
+        HttpServer server = HttpServer.create(new InetSocketAddress(PORT), 0);
+        server.createContext("/", new MainHandler());
         server.setExecutor(Executors.newCachedThreadPool());
         server.start();
-
-        System.out.println("Mesh Node (Java 8) running on http://localhost:8080");
+        System.out.println("Mesh Node (Java 8) started on port " + PORT);
     }
 
-    // -- Init directories & files --------------------------------------------------
-    private static void initDirs() throws IOException {
-        Files.createDirectories(Paths.get(FILES_DIR));
-        Files.createDirectories(Paths.get(INFO_DIR));
-        Path indexFile = Paths.get(FILES_INDEX);
-        if (!Files.exists(indexFile)) {
-            Files.write(indexFile, new byte[0]);
-        }
+    private static void bootstrap() throws IOException {
+        Files.createDirectories(Paths.get(DIR_FILES));
+        Files.createDirectories(Paths.get(DIR_INFO));
+        File index = new File(FILE_INDEX);
+        if (!index.exists()) index.createNewFile();
     }
 
-    private static void disableSslVerification() {
-        try {
-            TrustManager[] trustAll = new TrustManager[]{new X509TrustManager() {
-                public X509Certificate[] getAcceptedIssuers() { return null; }
-                public void checkClientTrusted(X509Certificate[] certs, String authType) { }
-                public void checkServerTrusted(X509Certificate[] certs, String authType) { }
-            }};
-            SSLContext sc = SSLContext.getInstance("SSL");
-            sc.init(null, trustAll, new SecureRandom());
-            HttpsURLConnection.setDefaultSSLSocketFactory(sc.getSocketFactory());
-            HttpsURLConnection.setDefaultHostnameVerifier((hostname, session) -> true);
-        } catch (Exception ignored) {}
-    }
-
-    // -- Helpers -------------------------------------------------------------------
-    private static String safeExt(String filename) {
-        if (filename == null || !filename.contains(".")) return "";
-        String ext = filename.substring(filename.lastIndexOf('.') + 1).toLowerCase();
-        return ext.replaceAll("[^a-z0-9]", "");
-    }
-
-    private static String readOptionalFile(String pathStr) {
-        try {
-            Path p = Paths.get(pathStr);
-            if (Files.exists(p)) {
-                return new String(Files.readAllBytes(p), StandardCharsets.UTF_8).trim();
-            }
-        } catch (IOException ignored) {}
-        return "";
-    }
-
-    private static List<String> loadServers() {
-        List<String> servers = new ArrayList<>();
-        try {
-            List<String> lines = Files.readAllLines(Paths.get(SERVERS_FILE), StandardCharsets.UTF_8);
-            Set<String> seen = new HashSet<>();
-            for (String line : lines) {
-                line = line.trim();
-                if (line.isEmpty()) continue;
-                if (!line.toLowerCase().startsWith("http://") && !line.toLowerCase().startsWith("https://")) {
-                    line = "http://" + line;
-                }
-                while (line.endsWith("/")) line = line.substring(0, line.length() - 1);
-                if (seen.add(line)) {
-                    servers.add(line);
-                }
-            }
-        } catch (IOException ignored) {}
-        return servers;
-    }
-
-    private static String escapeJson(String s) {
-        if (s == null) return "";
-        return s.replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\b", "\\b")
-                .replace("\f", "\\f")
-                .replace("\n", "\\n")
-                .replace("\r", "\\r")
-                .replace("\t", "\\t");
-    }
-
-    private static void sendJson(HttpExchange exchange, int code, String json) throws IOException {
-        exchange.getResponseHeaders().set("Content-Type", "application/json");
-        exchange.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
-        byte[] bytes = json.getBytes(StandardCharsets.UTF_8);
-        exchange.sendResponseHeaders(code, bytes.length);
-        try (OutputStream os = exchange.getResponseBody()) {
-            os.write(bytes);
-        }
-    }
-
-    private static void appendIndex(String entry) {
-        synchronized (FILES_TXT_LOCK) {
-            try {
-                Path p = Paths.get(FILES_INDEX);
-                List<String> lines = Files.exists(p) ? Files.readAllLines(p) : new ArrayList<>();
-                for (String line : lines) {
-                    if (line.trim().equals(entry)) return;
-                }
-                Files.write(p, (entry + "\n").getBytes(StandardCharsets.UTF_8), StandardOpenOption.CREATE, StandardOpenOption.APPEND);
-            } catch (IOException ignored) {}
-        }
-    }
-
-    private static void appendDataJson(Map<String, Object> info) {
-        synchronized (DATA_JSON_LOCK) {
-            try {
-                Path p = Paths.get(DATA_JSON_FILE);
-                String content = Files.exists(p) ? new String(Files.readAllBytes(p), StandardCharsets.UTF_8).trim() : "";
-                if (content.isEmpty() || !content.startsWith("[")) {
-                    content = "[\n]";
-                }
-                
-                StringBuilder newEntry = new StringBuilder();
-                newEntry.append("  {\n");
-                boolean first = true;
-                for (Map.Entry<String, Object> e : info.entrySet()) {
-                    if (!first) newEntry.append(",\n");
-                    newEntry.append("    \"").append(e.getKey()).append("\": ");
-                    if (e.getValue() instanceof Number || e.getValue() instanceof Boolean) {
-                        newEntry.append(e.getValue());
-                    } else {
-                        newEntry.append("\"").append(escapeJson(String.valueOf(e.getValue()))).append("\"");
-                    }
-                    first = false;
-                }
-                newEntry.append("\n  }");
-
-                String out;
-                if (content.length() <= 3) {
-                    out = "[\n" + newEntry + "\n]";
-                } else {
-                    int lastBracket = content.lastIndexOf(']');
-                    out = content.substring(0, lastBracket).trim() + ",\n" + newEntry + "\n]";
-                }
-                Files.write(p, out.getBytes(StandardCharsets.UTF_8));
-            } catch (IOException ignored) {}
-        }
-    }
-
-    // -- HTTP Handlers -------------------------------------------------------------
-    static class FilesHandler implements HttpHandler {
+    // --- Main HTTP Handler ---
+    static class MainHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
-            if (!"GET".equals(exchange.getRequestMethod())) {
-                exchange.sendResponseHeaders(405, -1);
-                return;
-            }
-            String path = exchange.getRequestURI().getPath().substring("/files/".length());
-            Path file = Paths.get(FILES_DIR, path).normalize();
-            if (!file.startsWith(Paths.get(FILES_DIR).normalize()) || !Files.exists(file) || Files.isDirectory(file)) {
-                exchange.sendResponseHeaders(404, -1);
-                return;
-            }
-            byte[] bytes = Files.readAllBytes(file);
-            exchange.sendResponseHeaders(200, bytes.length);
-            try (OutputStream os = exchange.getResponseBody()) {
-                os.write(bytes);
-            }
-        }
-    }
+            String method = exchange.getRequestMethod();
+            String path = exchange.getRequestURI().getPath();
+            String query = exchange.getRequestURI().getQuery();
 
-    static class RootHandler implements HttpHandler {
-        @Override
-        public void handle(HttpExchange exchange) throws IOException {
             try {
-                if ("GET".equals(exchange.getRequestMethod())) {
-                    String query = exchange.getRequestURI().getQuery();
-                    if (query != null && query.contains("node_status=1")) {
-                        handleStatus(exchange);
-                    } else {
-                        handleHtml(exchange);
-                    }
-                } else if ("POST".equals(exchange.getRequestMethod())) {
+                // 1. Status JSON
+                if ("GET".equals(method) && query != null && query.contains("node_status=1")) {
+                    handleStatusRequest(exchange);
+                    return;
+                }
+
+                // 2. Serve HTML
+                if ("GET".equals(method) && ("/".equals(path) || "/index.php".equals(path) || path.isEmpty())) {
+                    sendHtml(exchange);
+                    return;
+                }
+
+                // 3. Serve Files
+                if ("GET".equals(method) && path.startsWith("/files/")) {
+                    serveFile(exchange, path.substring(7));
+                    return;
+                }
+
+                // 4. Handle Upload
+                if ("POST".equals(method)) {
                     handleUpload(exchange);
-                } else if ("OPTIONS".equals(exchange.getRequestMethod())) {
-                    exchange.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
-                    exchange.sendResponseHeaders(204, -1);
-                } else {
-                    exchange.sendResponseHeaders(405, -1);
+                    return;
                 }
+
+                sendError(exchange, 404, "Not Found");
             } catch (Exception e) {
                 e.printStackTrace();
-                sendJson(exchange, 500, "{\"ok\":false,\"error\":\"" + escapeJson(e.getMessage()) + "\"}");
-            }
-        }
-
-        private void handleStatus(HttpExchange exchange) throws IOException {
-            boolean hasPk = !readOptionalFile(PUB_KEY_FILE).isEmpty();
-            boolean hasNi = !readOptionalFile(NODE_INFO_FILE).isEmpty();
-            int peers = loadServers().size();
-            String json = String.format("{\"public_key\":%b,\"node_info\":%b,\"peers\":%d}", hasPk, hasNi, peers);
-            sendJson(exchange, 200, json);
-        }
-
-        private void handleHtml(HttpExchange exchange) throws IOException {
-            byte[] bytes = HTML_TEMPLATE.getBytes(StandardCharsets.UTF_8);
-            exchange.getResponseHeaders().set("Content-Type", "text/html; charset=utf-8");
-            exchange.sendResponseHeaders(200, bytes.length);
-            try (OutputStream os = exchange.getResponseBody()) {
-                os.write(bytes);
-            }
-        }
-
-        private void handleUpload(HttpExchange exchange) throws Exception {
-            String contentType = exchange.getRequestHeaders().getFirst("Content-Type");
-            if (contentType == null || !contentType.contains("multipart/form-data")) {
-                sendJson(exchange, 400, "{\"ok\":false,\"error\":\"Invalid content type\"}");
-                return;
-            }
-
-            String boundary = contentType.substring(contentType.indexOf("boundary=") + 9);
-            MultipartData data = parseMultipart(exchange.getRequestBody(), boundary);
-
-            if (data.fileBytes == null) {
-                sendJson(exchange, 400, "{\"ok\":false,\"error\":\"Missing file payload\"}");
-                return;
-            }
-
-            String originalName = data.fileName;
-            String ext = safeExt(originalName);
-            if (BLOCKED_EXTS.contains(ext)) {
-                sendJson(exchange, 400, "{\"ok\":false,\"error\":\"PHP files are not accepted.\"}");
-                return;
-            }
-
-            boolean isPeerPush = "1".equals(data.fields.get("peer_push"));
-            String descField = isPeerPush ? "description" : "comment";
-            String description = data.fields.containsKey(descField) ? data.fields.get(descField) : "";
-            if (description.length() > MAX_COMMENT) description = description.substring(0, MAX_COMMENT);
-
-            String pubKey = isPeerPush ? data.fields.getOrDefault("public_key", "").trim() : readOptionalFile(PUB_KEY_FILE);
-            if (!isPeerPush && pubKey.isEmpty() && data.fields.containsKey("public_key")) {
-                pubKey = data.fields.get("public_key").trim();
-                if (pubKey.length() > 512) pubKey = pubKey.substring(0, 512);
-            }
-
-            String nodeInfo = isPeerPush ? data.fields.getOrDefault("node_info", "").trim() : readOptionalFile(NODE_INFO_FILE);
-
-            // Hash
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hashBytes = digest.digest(data.fileBytes);
-            StringBuilder sb = new StringBuilder();
-            for (byte b : hashBytes) sb.append(String.format("%02x", b));
-            String hash = sb.toString();
-
-            String baseName = ext.isEmpty() ? hash : hash + "." + ext;
-            Path destFile = Paths.get(FILES_DIR, baseName);
-            Path destInfo = Paths.get(INFO_DIR, hash + ".json");
-
-            boolean existed = Files.exists(destFile);
-            if (!existed) {
-                Files.write(destFile, data.fileBytes);
-                appendIndex(baseName);
-            }
-
-            if (!Files.exists(destInfo)) {
-                Map<String, Object> info = new LinkedHashMap<>();
-                info.put("hash", hash);
-                info.put("original_filename", originalName);
-                info.put("size", data.fileBytes.length);
-                info.put("extension", ext);
-                info.put("public_key", pubKey);
-                info.put("node_info", nodeInfo);
-                info.put("description", description);
-
-                // Write info json
-                StringBuilder infoStr = new StringBuilder("{\n");
-                boolean first = true;
-                for (Map.Entry<String, Object> e : info.entrySet()) {
-                    if(e.getKey().equals("hash")) continue; // Don't write hash to individual files per original logic
-                    if (!first) infoStr.append(",\n");
-                    infoStr.append("  \"").append(e.getKey()).append("\": ");
-                    if (e.getValue() instanceof Number) infoStr.append(e.getValue());
-                    else infoStr.append("\"").append(escapeJson(String.valueOf(e.getValue()))).append("\"");
-                    first = false;
-                }
-                infoStr.append("\n}");
-                Files.write(destInfo, infoStr.toString().getBytes(StandardCharsets.UTF_8));
-                appendDataJson(info);
-            }
-
-            if (isPeerPush) {
-                sendJson(exchange, 200, "{\"ok\":true,\"hash\":\"" + hash + "\",\"filename\":\"" + baseName + "\",\"existed\":" + existed + "}");
-                return;
-            }
-
-            List<String> servers = loadServers();
-            String pkMsg = pubKey.isEmpty() ? "— not found" : "? included";
-            String niMsg = nodeInfo.isEmpty() ? "— not found" : "? included";
-
-            String resp = String.format("{\"ok\":true,\"hash\":\"%s\",\"filename\":\"%s\",\"existed\":%b,\"public_key\":\"%s\",\"node_info\":\"%s\",\"peers_total\":%d,\"peers\":[]}",
-                    hash, baseName, existed, pkMsg, niMsg, servers.size());
-
-            sendJson(exchange, 200, resp);
-
-            if (!existed && !servers.isEmpty()) {
-                final String fExt = ext;
-                final String fDesc = description;
-                final String fPk = pubKey;
-                final String fNi = nodeInfo;
-                new Thread(() -> {
-                    for (String server : servers) {
-                        pushToServer(server, destFile, originalName, fDesc, fPk, fNi);
-                    }
-                }).start();
+                sendError(exchange, 500, "Internal Server Error");
             }
         }
     }
 
-    // -- Peer Replication ----------------------------------------------------------
-    private static void pushToServer(String serverUrl, Path file, String originalName, String desc, String pk, String ni) {
+    // --- Core Logic ---
+    private static void handleStatusRequest(HttpExchange exchange) throws IOException {
+        boolean pk = new File(FILE_PUB_KEY).exists() && new File(FILE_PUB_KEY).length() > 0;
+        boolean ni = new File(FILE_NODE_INFO).exists() && new File(FILE_NODE_INFO).length() > 0;
+        int peers = loadServers().size();
+        String json = String.format("{\"public_key\":%b,\"node_info\":%b,\"peers\":%d}", pk, ni, peers);
+        sendJsonResponse(exchange, 200, json);
+    }
+
+    private static void serveFile(HttpExchange exchange, String filename) throws IOException {
+        File file = new File(DIR_FILES, filename);
+        if (!file.exists() || file.isDirectory()) {
+            sendError(exchange, 404, "File not found");
+            return;
+        }
+        exchange.getResponseHeaders().set("Content-Type", "application/octet-stream");
+        exchange.sendResponseHeaders(200, file.length());
+        try (OutputStream os = exchange.getResponseBody()) {
+            Files.copy(file.toPath(), os);
+        }
+    }
+
+    private static void handleUpload(HttpExchange exchange) throws Exception {
+        MultipartUpload upload = MultipartUpload.parse(exchange);
+
+        if (upload.tempFile == null) {
+            sendJsonResponse(exchange, 400, "{\"ok\":false,\"error\":\"No file uploaded.\"}");
+            return;
+        }
+
+        if (upload.tempFile.length() > MAX_FILE_SIZE) {
+            upload.tempFile.delete();
+            sendJsonResponse(exchange, 400, "{\"ok\":false,\"error\":\"File exceeds the 1GB size limit.\"}");
+            return;
+        }
+
+        String ext = safeExt(upload.filename);
+        if (BLOCKED_EXT.contains(ext)) {
+            upload.tempFile.delete();
+            sendJsonResponse(exchange, 400, "{\"ok\":false,\"error\":\"Executable files are strictly blocked.\"}");
+            return;
+        }
+
+        String hash = getHash(upload.tempFile);
+        String baseName = ext.isEmpty() ? hash : hash + "." + ext;
+        File destFile = new File(DIR_FILES, baseName);
+        File destInfo = new File(DIR_INFO, hash + ".json");
+        boolean existed = destFile.exists();
+
+        if (!existed) {
+            Files.move(upload.tempFile.toPath(), destFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+            appendIndex(baseName);
+        } else {
+            upload.tempFile.delete();
+        }
+
+        String serverPubKey = sanitize(readOptionalFile(FILE_PUB_KEY));
+        String nodeInfo = upload.nodeInfo.isEmpty() ? sanitize(readOptionalFile(FILE_NODE_INFO)) : sanitize(upload.nodeInfo);
+        
+        String metaJson = String.format("{\n" +
+                "  \"filename\": \"%s\",\n  \"size\": %d,\n  \"extension\": \"%s\",\n" +
+                "  \"public_key\": \"%s\",\n  \"server_public_key\": \"%s\",\n" +
+                "  \"node_info\": \"%s\",\n  \"description\": \"%s\",\n  \"date\": \"%s\"\n}",
+                escapeJson(sanitize(upload.filename)), destFile.length(), escapeJson(ext),
+                escapeJson(sanitize(upload.publicKey)), escapeJson(serverPubKey),
+                escapeJson(nodeInfo), escapeJson(sanitize(upload.description)),
+                OffsetDateTime.now().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME));
+
+        if (!destInfo.exists()) {
+            Files.write(destInfo.toPath(), metaJson.getBytes(StandardCharsets.UTF_8));
+        }
+
+        if (!existed) {
+            appendDataJson(hash, metaJson);
+        }
+
+        boolean isPeerPush = "1".equals(upload.peerPush);
+        if (isPeerPush) {
+            sendJsonResponse(exchange, 200, String.format("{\"ok\":true,\"hash\":\"%s\",\"filename\":\"%s\",\"existed\":%b}", hash, baseName, existed));
+            return;
+        }
+
+        List<String> servers = loadServers();
+        String res = String.format("{\"ok\":true,\"hash\":\"%s\",\"filename\":\"%s\",\"existed\":%b,\"peers_total\":%d,\"peers\":[]}", 
+                hash, baseName, existed, servers.size());
+        
+        sendJsonResponse(exchange, 200, res);
+
+        if (!existed) {
+            CompletableFuture.runAsync(() -> {
+                for (String server : servers) {
+                    pushToServer(server, destFile, upload.filename, upload.description, upload.publicKey, nodeInfo);
+                }
+            });
+        }
+    }
+
+    // --- Peer Push Logic ---
+    private static void pushToServer(String serverStr, File file, String filename, String desc, String pubKey, String nodeInfo) {
         try {
-            String boundary = "----WebKitFormBoundary" + System.currentTimeMillis();
-            URL url = new URL(serverUrl + "/");
+            String boundary = "----MeshBoundary" + UUID.randomUUID().toString().replace("-", "");
+            URL url = new URL(serverStr.endsWith("/") ? serverStr + "index.php" : serverStr + "/index.php");
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setDoOutput(true);
             conn.setRequestMethod("POST");
@@ -361,291 +193,420 @@ public class Index {
             conn.setConnectTimeout(20000);
             conn.setReadTimeout(20000);
 
-            try (OutputStream os = conn.getOutputStream()) {
-                writeFormField(os, boundary, "description", desc);
-                writeFormField(os, boundary, "public_key", pk);
-                writeFormField(os, boundary, "node_info", ni);
-                writeFormField(os, boundary, "peer_push", "1");
+            try (OutputStream out = conn.getOutputStream();
+                 PrintWriter writer = new PrintWriter(new OutputStreamWriter(out, StandardCharsets.UTF_8), true)) {
 
-                os.write(("--" + boundary + "\r\n").getBytes(StandardCharsets.UTF_8));
-                os.write(("Content-Disposition: form-data; name=\"file\"; filename=\"" + originalName + "\"\r\n").getBytes(StandardCharsets.UTF_8));
-                os.write(("Content-Type: application/octet-stream\r\n\r\n").getBytes(StandardCharsets.UTF_8));
-                Files.copy(file, os);
-                os.write(("\r\n--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
-                os.flush();
+                writeField(writer, boundary, "description", desc);
+                writeField(writer, boundary, "public_key", pubKey);
+                writeField(writer, boundary, "node_info", nodeInfo);
+                writeField(writer, boundary, "peer_push", "1");
+
+                writer.append("--").append(boundary).append("\r\n");
+                writer.append("Content-Disposition: form-data; name=\"file\"; filename=\"").append(escapeJson(filename)).append("\"\r\n");
+                writer.append("Content-Type: application/octet-stream\r\n\r\n").flush();
+
+                Files.copy(file.toPath(), out);
+                out.flush();
+                writer.append("\r\n--").append(boundary).append("--\r\n").flush();
             }
             conn.getResponseCode();
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) { }
     }
 
-    private static void writeFormField(OutputStream os, String boundary, String name, String value) throws IOException {
-        os.write(("--" + boundary + "\r\n").getBytes(StandardCharsets.UTF_8));
-        os.write(("Content-Disposition: form-data; name=\"" + name + "\"\r\n\r\n").getBytes(StandardCharsets.UTF_8));
-        os.write((value + "\r\n").getBytes(StandardCharsets.UTF_8));
+    private static void writeField(PrintWriter writer, String boundary, String name, String val) {
+        if (val == null || val.isEmpty()) return;
+        writer.append("--").append(boundary).append("\r\n");
+        writer.append("Content-Disposition: form-data; name=\"").append(name).append("\"\r\n\r\n");
+        writer.append(val).append("\r\n");
     }
 
-    // -- Simple Multipart Parser (Zero Dependencies) -------------------------------
-    static class MultipartData {
-        Map<String, String> fields = new HashMap<>();
-        byte[] fileBytes;
-        String fileName;
+    // --- Utilities ---
+    private static void sendJsonResponse(HttpExchange exchange, int code, String json) throws IOException {
+        byte[] bytes = json.getBytes(StandardCharsets.UTF_8);
+        exchange.getResponseHeaders().set("Content-Type", "application/json; charset=UTF-8");
+        exchange.sendResponseHeaders(code, bytes.length);
+        try (OutputStream os = exchange.getResponseBody()) { os.write(bytes); }
     }
 
-    private static MultipartData parseMultipart(InputStream is, String boundaryStr) throws IOException {
-        MultipartData data = new MultipartData();
-        ByteArrayOutputStream buffer = new ByteArrayOutputStream();
-        byte[] chunk = new byte[8192];
-        int read;
-        while ((read = is.read(chunk)) != -1) buffer.write(chunk, 0, read);
-        byte[] body = buffer.toByteArray();
+    private static void sendHtml(HttpExchange exchange) throws IOException {
+        byte[] bytes = HTML_TEMPLATE.getBytes(StandardCharsets.UTF_8);
+        exchange.getResponseHeaders().set("Content-Type", "text/html; charset=UTF-8");
+        exchange.sendResponseHeaders(200, bytes.length);
+        try (OutputStream os = exchange.getResponseBody()) { os.write(bytes); }
+    }
 
-        byte[] boundary = ("--" + boundaryStr).getBytes(StandardCharsets.US_ASCII);
-        int pos = 0;
-        while (pos < body.length) {
-            int start = indexOf(body, boundary, pos);
-            if (start == -1) break;
-            start += boundary.length;
-            if (start + 1 < body.length && body[start] == '-' && body[start + 1] == '-') break; // End boundary
-            start += 2; // Skip \r\n
+    private static void sendError(HttpExchange exchange, int code, String msg) throws IOException {
+        String json = "{\"ok\":false,\"error\":\"" + msg + "\"}";
+        sendJsonResponse(exchange, code, json);
+    }
 
-            int end = indexOf(body, boundary, start);
-            if (end == -1) break;
-            int partEnd = end - 2; // Subtract \r\n
+    private static synchronized void appendIndex(String entry) throws IOException {
+        File f = new File(FILE_INDEX);
+        List<String> lines = f.exists() ? Files.readAllLines(f.toPath()) : new ArrayList<>();
+        if (!lines.contains(entry)) {
+            Files.write(f.toPath(), (entry + "\n").getBytes(StandardCharsets.UTF_8), StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+        }
+    }
 
-            int headerEnd = indexOf(body, new byte[]{'\r', '\n', '\r', '\n'}, start);
-            if (headerEnd != -1 && headerEnd < partEnd) {
-                String headers = new String(body, start, headerEnd - start, StandardCharsets.ISO_8859_1);
-                int contentStart = headerEnd + 4;
-                int contentLength = partEnd - contentStart;
+    private static synchronized void appendDataJson(String hash, String metaJson) throws IOException {
+        File dataFile = new File(FILE_DATA_JSON);
+        String data = dataFile.exists() ? new String(Files.readAllBytes(dataFile.toPath()), StandardCharsets.UTF_8).trim() : "[]";
+        if (data.isEmpty()) data = "[]";
 
-                Matcher nameMatcher = Pattern.compile("name=\"([^\"]+)\"").matcher(headers);
-                Matcher fileMatcher = Pattern.compile("filename=\"([^\"]*)\"").matcher(headers);
+        String entry = "{\n  \"hash\": \"" + hash + "\",\n" + metaJson.substring(1);
+        String indented = entry.replaceAll("(?m)^", "    ");
 
-                if (nameMatcher.find()) {
-                    String name = nameMatcher.group(1);
-                    if (fileMatcher.find()) {
-                        data.fileName = fileMatcher.group(1);
-                        data.fileBytes = new byte[contentLength];
-                        System.arraycopy(body, contentStart, data.fileBytes, 0, contentLength);
-                    } else {
-                        data.fields.put(name, new String(body, contentStart, contentLength, StandardCharsets.UTF_8));
-                    }
+        int lastBracket = data.lastIndexOf(']');
+        if (lastBracket != -1) {
+            String prefix = data.substring(0, lastBracket).trim();
+            String newContent = prefix.equals("[") ? "[\n" + indented + "\n]" : prefix + ",\n" + indented + "\n]";
+            Files.write(dataFile.toPath(), newContent.getBytes(StandardCharsets.UTF_8));
+        }
+    }
+
+    private static List<String> loadServers() {
+        File f = new File(FILE_SERVERS);
+        List<String> list = new ArrayList<>();
+        if (!f.exists()) return list;
+        try {
+            for (String line : Files.readAllLines(f.toPath())) {
+                line = line.trim();
+                if (!line.isEmpty()) {
+                    if (!line.toLowerCase().startsWith("http")) line = "http://" + line;
+                    list.add(line.replaceAll("/+$", ""));
                 }
             }
-            pos = end;
-        }
-        return data;
+        } catch (IOException ignored) {}
+        return new ArrayList<>(new HashSet<>(list));
     }
 
-    private static int indexOf(byte[] data, byte[] pattern, int start) {
-        for (int i = start; i <= data.length - pattern.length; i++) {
-            boolean match = true;
-            for (int j = 0; j < pattern.length; j++) {
-                if (data[i + j] != pattern[j]) { match = false; break; }
+    private static String getHash(File file) throws Exception {
+        MessageDigest md = MessageDigest.getInstance("SHA-256");
+        try (InputStream is = new FileInputStream(file)) {
+            byte[] buf = new byte[8192];
+            int read;
+            while ((read = is.read(buf)) != -1) md.update(buf, 0, read);
+        }
+        StringBuilder sb = new StringBuilder();
+        for (byte b : md.digest()) sb.append(String.format("%02x", b));
+        return sb.toString();
+    }
+
+    private static String safeExt(String filename) {
+        int dot = filename.lastIndexOf('.');
+        if (dot == -1) return "";
+        return filename.substring(dot + 1).toLowerCase().replaceAll("[^a-z0-9]", "");
+    }
+
+    private static String sanitize(String input) {
+        if (input == null) return "";
+        String t = input.trim();
+        return t.length() > MAX_TEXT_LEN ? t.substring(0, MAX_TEXT_LEN) : t;
+    }
+
+    private static String escapeJson(String s) {
+        return s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "");
+    }
+
+    private static String readOptionalFile(String path) {
+        File f = new File(path);
+        if (!f.exists()) return "";
+        try { return new String(Files.readAllBytes(f.toPath()), StandardCharsets.UTF_8).trim(); } 
+        catch (IOException e) { return ""; }
+    }
+
+    // --- Manual stream parser for large multipart uploads ---
+    static class MultipartUpload {
+        String filename = "";
+        String description = "";
+        String publicKey = "";
+        String nodeInfo = "";
+        String peerPush = "0";
+        File tempFile = null;
+
+        static MultipartUpload parse(HttpExchange exchange) throws Exception {
+            MultipartUpload req = new MultipartUpload();
+            String cType = exchange.getRequestHeaders().getFirst("Content-Type");
+            if (cType == null || !cType.contains("boundary=")) return req;
+
+            String bStr = cType.split("boundary=")[1];
+            byte[] bndBody = ("\r\n--" + bStr).getBytes(StandardCharsets.ISO_8859_1);
+            byte[] bndStart = ("--" + bStr).getBytes(StandardCharsets.ISO_8859_1);
+
+            InputStream in = new BufferedInputStream(exchange.getRequestBody());
+            skipUntil(in, bndStart);
+            readLine(in);
+
+            while (true) {
+                String disposition = null;
+                while (true) {
+                    String line = readLine(in);
+                    if (line == null || line.equals("--")) return req;
+                    if (line.isEmpty()) break;
+                    if (line.toLowerCase().startsWith("content-disposition:")) disposition = line;
+                }
+                if (disposition == null) break;
+
+                String name = extractParam(disposition, "name");
+                String fname = extractParam(disposition, "filename");
+
+                if (fname != null) {
+                    req.filename = fname;
+                    req.tempFile = File.createTempFile("mesh_", ".tmp");
+                    try (OutputStream out = new BufferedOutputStream(new FileOutputStream(req.tempFile))) {
+                        copyUntil(in, out, bndBody);
+                    }
+                } else {
+                    ByteArrayOutputStream out = new ByteArrayOutputStream();
+                    copyUntil(in, out, bndBody);
+                    String val = new String(out.toByteArray(), StandardCharsets.UTF_8);
+                    if ("description".equals(name)) req.description = val;
+                    if ("public_key".equals(name)) req.publicKey = val;
+                    if ("node_info".equals(name)) req.nodeInfo = val;
+                    if ("peer_push".equals(name)) req.peerPush = val;
+                }
+                readLine(in);
             }
-            if (match) return i;
+            return req;
         }
-        return -1;
+
+        private static String extractParam(String header, String param) {
+            String match = param + "=\"";
+            int start = header.indexOf(match);
+            if (start == -1) return null;
+            start += match.length();
+            int end = header.indexOf("\"", start);
+            return end == -1 ? null : header.substring(start, end);
+        }
+
+        private static void skipUntil(InputStream in, byte[] sequence) throws IOException {
+             copyUntil(in, new ByteArrayOutputStream(), sequence);
+        }
+
+        private static String readLine(InputStream in) throws IOException {
+            ByteArrayOutputStream bos = new ByteArrayOutputStream();
+            int b;
+            while ((b = in.read()) != -1) {
+                if (b == '\r') {
+                    int next = in.read();
+                    if (next == '\n') return new String(bos.toByteArray(), StandardCharsets.ISO_8859_1);
+                    bos.write(b);
+                    if (next != -1) bos.write(next);
+                } else {
+                    bos.write(b);
+                }
+            }
+            return bos.size() > 0 ? new String(bos.toByteArray(), StandardCharsets.ISO_8859_1) : null;
+        }
+
+        private static void copyUntil(InputStream in, OutputStream out, byte[] boundary) throws IOException {
+            int bLen = boundary.length;
+            int[] b = new int[bLen];
+            int bIdx = 0;
+
+            for (int i = 0; i < bLen; i++) {
+                int val = in.read();
+                if (val == -1) {
+                    for (int j = 0; j < i; j++) out.write(b[j]);
+                    return;
+                }
+                b[i] = val;
+            }
+
+            while (true) {
+                boolean match = true;
+                for (int i = 0; i < bLen; i++) {
+                    if ((byte) b[(bIdx + i) % bLen] != boundary[i]) { match = false; break; }
+                }
+                if (match) return;
+                out.write(b[bIdx]);
+                int next = in.read();
+                if (next == -1) break;
+                b[bIdx] = next;
+                bIdx = (bIdx + 1) % bLen;
+            }
+            for (int i = 0; i < bLen; i++) out.write(b[(bIdx + i) % bLen]);
+        }
     }
 
-    // -- HTML Frontend String Literal ----------------------------------------------
+    // --- HTML Frontend Template ---
     private static final String HTML_TEMPLATE = "<!DOCTYPE html>\n" +
             "<html lang=\"en\">\n" +
             "<head>\n" +
             "<meta charset=\"UTF-8\">\n" +
             "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\n" +
-            "<title>Mesh Node (Java)</title>\n" +
+            "<meta name=\"description\" content=\"Mesh Node — distributed file replication\">\n" +
+            "<meta name=\"theme-color\" content=\"#4f46e5\">\n" +
+            "<title>Mesh Node — Distributed File Replication</title>\n" +
             "<style>\n" +
-            "*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}\n" +
-            "html,body{min-height:100%;background:#fff;color:#111;font-family:system-ui,-apple-system,BlinkMacSystemFont,\"Segoe UI\",Roboto,sans-serif}\n" +
-            "body{display:flex;flex-direction:column;align-items:center;padding:2rem 1.5rem}\n" +
-            ".page{max-width:36rem;width:100%}\n" +
-            "header{margin-bottom:2rem;display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:0.8rem}\n" +
-            "h1{font-size:1.4rem;font-weight:700;letter-spacing:-0.02em}\n" +
-            "h1 em{font-weight:400;color:#555;font-style:normal}\n" +
-            ".sub{font-size:0.8rem;color:#777;margin-top:0.2rem}\n" +
-            ".search-link{font-size:0.85rem;color:#0044cc;text-decoration:none;white-space:nowrap}\n" +
-            ".search-link:hover{text-decoration:underline}\n" +
-            ".head-nav {display:flex;gap:1rem;align-items:center;}\n" +
-            ".head-nav a {font-size:0.85rem;color:#0044cc;text-decoration:none;font-weight:500;}\n" +
-            ".head-nav a:hover {text-decoration:underline;}\n" +
-            "#node-bar{display:flex;gap:0.75rem;flex-wrap:wrap;margin-bottom:1.75rem;font-size:0.8rem;color:#555}\n" +
-            ".nb-pill{display:flex;align-items:center;gap:0.35rem;padding:0.25rem 0.6rem;background:#f5f5f5;border-radius:4px;border:1px solid #e0e0e0}\n" +
-            ".nb-dot{width:7px;height:7px;border-radius:50%;background:#aaa}\n" +
-            ".nb-dot.ok{background:#1a8e3f}\n" +
-            ".nb-dot.blue{background:#0044cc}\n" +
-            ".nb-val{font-weight:500}\n" +
-            "#drop-zone{border:2px dashed #ccc;border-radius:6px;padding:2rem 1rem;text-align:center;cursor:pointer;transition:border-color 0.2s,background 0.2s}\n" +
-            "#drop-zone:hover,#drop-zone:focus{background:#fafafa;border-color:#999}\n" +
-            "#drop-zone.over{border-color:#0044cc;background:#f0f4ff}\n" +
-            ".dz-icon{margin-bottom:0.75rem;font-size:1.8rem;color:#777}\n" +
-            ".dz-title{font-size:1rem;font-weight:600;margin-bottom:0.3rem}\n" +
-            ".dz-sub{font-size:0.8rem;color:#666;line-height:1.5}\n" +
-            ".dz-sub b{color:#0044cc;font-weight:600}\n" +
-            "#file-input{display:none}\n" +
-            "#panel{display:none;margin-top:1.25rem;border:1px solid #ddd;border-radius:6px;overflow:hidden}\n" +
-            ".panel-top{display:flex;align-items:center;gap:0.8rem;padding:0.8rem 1rem;border-bottom:1px solid #eee}\n" +
-            ".f-icon{width:2rem;height:2rem;background:#f0f4ff;border-radius:4px;display:grid;place-items:center;flex-shrink:0;font-size:1rem;color:#0044cc}\n" +
-            "#f-name{font-size:0.9rem;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}\n" +
-            "#f-size{font-size:0.8rem;color:#777;flex-shrink:0}\n" +
-            ".x-btn{background:none;border:none;cursor:pointer;font-size:1.2rem;color:#999;padding:0 0.2rem;transition:color 0.15s}\n" +
-            ".x-btn:hover{color:#d00}\n" +
-            ".meta-pills{padding:0.5rem 1rem;display:flex;gap:0.5rem;flex-wrap:wrap;border-bottom:1px solid #eee;background:#fafafa}\n" +
-            ".mpill{font-size:0.75rem;padding:0.2rem 0.6rem;border-radius:4px;border:1px solid #ddd;color:#555;background:#fff;display:flex;align-items:center;gap:0.3rem}\n" +
-            ".mpill.has{border-color:#1a8e3f;color:#1a8e3f;background:#f0fff0}\n" +
-            ".mpill svg{width:0.9rem;height:0.9rem;stroke:currentColor;fill:none;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}\n" +
-            ".panel-mid{padding:1rem}\n" +
-            ".fl{display:block;font-size:0.75rem;color:#777;margin-bottom:0.5rem}\n" +
-            "textarea#comment-box{width:100%;min-height:5rem;padding:0.6rem 0.8rem;border:1px solid #ccc;border-radius:4px;font-family:inherit;font-size:0.9rem;resize:vertical;outline:none;transition:border-color 0.2s}\n" +
-            "textarea#comment-box:focus{border-color:#0044cc}\n" +
-            ".cmeta{display:flex;justify-content:space-between;margin-top:0.4rem;font-size:0.75rem;color:#999}\n" +
-            ".ccount.over{color:#d00}\n" +
-            ".panel-bot{padding:0.8rem 1rem;border-top:1px solid #eee;display:flex;align-items:center;justify-content:space-between;gap:0.8rem}\n" +
-            ".peer-info{font-size:0.8rem;color:#555}\n" +
-            ".peer-info b{font-weight:600}\n" +
-            ".btn-send{padding:0.5rem 1.2rem;background:#0044cc;color:#fff;border:none;border-radius:4px;font-weight:600;font-size:0.85rem;cursor:pointer;transition:opacity 0.2s;display:flex;align-items:center;gap:0.4rem}\n" +
-            ".btn-send:hover{opacity:0.9}\n" +
-            ".btn-send.busy{opacity:0.5;pointer-events:none}\n" +
-            ".btn-send svg{width:1rem;height:1rem;stroke:#fff;stroke-width:2.2;fill:none;stroke-linecap:round;stroke-linejoin:round}\n" +
-            "#prog-wrap{height:3px;background:#eee;border-radius:3px;overflow:hidden;display:none;margin-top:1rem}\n" +
-            "#prog-bar{height:100%;width:0%;background:#0044cc;transition:width 0.1s linear}\n" +
-            "#status{display:none;margin-top:1rem;padding:0.8rem 1rem;border-radius:4px;font-size:0.9rem;line-height:1.5;animation:fadeUp 0.25s ease}\n" +
-            "#status.ok{background:#f0fff0;border:1px solid #c0e0c0;color:#1a8e3f}\n" +
-            "#status.fail{background:#fff0f0;border:1px solid #e0c0c0;color:#d00}\n" +
-            ".hash-line{margin-top:0.6rem}\n" +
-            ".file-link{display:inline-flex;align-items:center;gap:0.4rem;padding:0.4rem 1rem;font-size:0.85rem;text-decoration:none;color:#0044cc;border:1px solid #0044cc;border-radius:4px;transition:background 0.15s}\n" +
-            ".file-link:hover{background:#f0f4ff}\n" +
-            ".file-link svg{width:0.9rem;height:0.9rem;stroke:currentColor;stroke-width:2.2;fill:none;stroke-linecap:round;stroke-linejoin:round}\n" +
-            ".json-preview{margin-top:2rem;border:1px solid #ddd;border-radius:4px;overflow:hidden}\n" +
-            ".json-preview-head{padding:0.5rem 1rem;border-bottom:1px solid #eee;font-size:0.75rem;color:#777;background:#fafafa;display:flex;align-items:center;gap:0.4rem}\n" +
-            ".json-preview-head svg{width:0.9rem;height:0.9rem;stroke:#777;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}\n" +
-            "pre#json-schema{padding:1rem;font-family:\"SF Mono\",\"Fira Code\",\"Fira Mono\",\"Roboto Mono\",monospace;font-size:0.8rem;line-height:1.6;color:#333;overflow-x:auto;margin:0}\n" +
-            ".jk{color:#0044cc} .js{color:#1a8e3f} .jn{color:#b04000} .jb{color:#d00}\n" +
-            "footer{border-top:1px solid #eee;padding-top:1.2rem;margin-top:2rem;display:flex;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;font-size:0.75rem;color:#aaa}\n" +
-            "@keyframes fadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}\n" +
+            ":root {\n" +
+            "  --bg:              #f6f7fb;\n" +
+            "  --bg-elev:         #ffffff;\n" +
+            "  --bg-subtle:       #f1f2f6;\n" +
+            "  --border:          #e5e7ec;\n" +
+            "  --border-strong:   #d2d6dd;\n" +
+            "  --text:            #0a0c10;\n" +
+            "  --text-2:          #4a5060;\n" +
+            "  --text-3:          #8b92a3;\n" +
+            "  --accent:          #4f46e5;\n" +
+            "  --accent-2:        #7c3aed;\n" +
+            "  --accent-soft:     #eef0ff;\n" +
+            "  --accent-hover:    #4338ca;\n" +
+            "  --success:         #059669;\n" +
+            "  --success-soft:    #ecfdf5;\n" +
+            "  --success-border:  #a7f3d0;\n" +
+            "  --danger:          #dc2626;\n" +
+            "  --danger-soft:     #fef2f2;\n" +
+            "  --danger-border:   #fecaca;\n" +
+            "  --warning:         #d97706;\n" +
+            "  --radius-sm:       6px;\n" +
+            "  --radius:          10px;\n" +
+            "  --radius-lg:       14px;\n" +
+            "  --shadow-xs:       0 1px 2px rgba(15,17,23,.04);\n" +
+            "  --shadow-sm:       0 1px 3px rgba(15,17,23,.05), 0 1px 2px rgba(15,17,23,.03);\n" +
+            "  --shadow:          0 4px 14px rgba(15,17,23,.06), 0 1px 3px rgba(15,17,23,.04);\n" +
+            "  --font:            'Inter', -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, sans-serif;\n" +
+            "  --mono:            'JetBrains Mono', ui-monospace, \"SF Mono\", monospace;\n" +
+            "}\n" +
+            "*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }\n" +
+            "html, body { min-height: 100%; }\n" +
+            "body { background: var(--bg); color: var(--text); font-family: var(--font); font-size: 14px; line-height: 1.5; display: flex; flex-direction: column; align-items: center; padding: 32px 24px 48px; }\n" +
+            ".shell { width: 100%; max-width: 760px; }\n" +
+            "header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 28px; flex-wrap: wrap; }\n" +
+            ".brand { display: flex; align-items: center; gap: 12px; }\n" +
+            ".brand-mark { width: 38px; height: 38px; border-radius: 10px; background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); display: grid; place-items: center; color: #fff; font-weight: 700; font-size: 15px; }\n" +
+            ".brand-text h1 { font-size: 15px; font-weight: 600; } .brand-text p { font-size: 12px; color: var(--text-3); }\n" +
+            ".head-nav { display: flex; gap: 2px; flex-wrap: wrap; }\n" +
+            ".head-nav a { font-size: 12.5px; color: var(--text-2); text-decoration: none; padding: 6px 10px; border-radius: var(--radius-sm); font-weight: 500; }\n" +
+            ".head-nav a:hover { background: var(--bg-subtle); color: var(--text); }\n" +
+            ".head-nav a.active { background: var(--accent-soft); color: var(--accent); }\n" +
+            ".status-bar { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 20px; }\n" +
+            ".sb-card { display: flex; align-items: center; gap: 12px; padding: 12px 14px; background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-xs); }\n" +
+            ".nb-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-3); }\n" +
+            ".nb-dot.ok { background: var(--success); box-shadow: 0 0 0 3px rgba(5,150,105,.12); }\n" +
+            ".nb-dot.blue { background: var(--accent); box-shadow: 0 0 0 3px rgba(79,70,229,.15); }\n" +
+            ".sb-label { font-size: 10.5px; color: var(--text-3); text-transform: uppercase; font-weight: 600; }\n" +
+            ".sb-value { font-size: 13px; color: var(--text); font-weight: 600; margin-top: 1px; }\n" +
+            ".drop { background: var(--bg-elev); border: 1.5px dashed var(--border-strong); border-radius: var(--radius-lg); padding: 48px 24px; text-align: center; cursor: pointer; overflow: hidden; }\n" +
+            ".drop:hover, .drop.over { border-color: var(--accent); }\n" +
+            ".drop-icon { width: 56px; height: 56px; margin: 0 auto 16px; background: var(--accent-soft); color: var(--accent); border-radius: 14px; display: grid; place-items: center; }\n" +
+            ".drop-icon svg { width: 26px; height: 26px; }\n" +
+            ".drop-title { font-size: 16px; font-weight: 600; margin-bottom: 4px; }\n" +
+            ".drop-sub { font-size: 13px; color: var(--text-2); }\n" +
+            "#panel { display: none; margin-top: 16px; background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius-lg); }\n" +
+            ".panel-head { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--border); }\n" +
+            ".file-chip { width: 40px; height: 40px; background: var(--accent-soft); color: var(--accent); border-radius: 9px; display: grid; place-items: center; }\n" +
+            ".file-chip svg { width: 20px; height: 20px; }\n" +
+            "#f-name { flex: 1; font-weight: 600; overflow: hidden; text-overflow: ellipsis; }\n" +
+            ".x-btn { background: transparent; border: 0; cursor: pointer; color: var(--text-3); padding: 6px; }\n" +
+            ".x-btn svg { width: 16px; height: 16px; }\n" +
+            ".panel-meta { padding: 10px 16px; background: var(--bg-subtle); border-bottom: 1px solid var(--border); display: flex; gap: 8px; }\n" +
+            ".input-inline { flex: 1; padding: 6px 12px; border: 1px solid var(--border); border-radius: 999px; font-size: 12px; outline: none; }\n" +
+            ".mpill { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; padding: 4px 10px; border: 1px solid var(--border); border-radius: 999px; background: var(--bg-elev); }\n" +
+            ".mpill.has { background: var(--success-soft); color: var(--success); }\n" +
+            ".mpill svg { width: 12px; height: 12px; }\n" +
+            ".panel-body { padding: 16px; }\n" +
+            ".field-label { display: block; font-size: 11px; font-weight: 600; color: var(--text-2); margin-bottom: 6px; }\n" +
+            "textarea#comment-box { width: 100%; min-height: 96px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); font-size: 14px; outline: none; }\n" +
+            ".panel-foot { padding: 14px 16px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; background: var(--bg-subtle); }\n" +
+            ".btn-send { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; background: var(--accent); color: #fff; border: 0; border-radius: 8px; cursor: pointer; }\n" +
+            ".btn-send.busy { opacity: .65; pointer-events: none; }\n" +
+            ".btn-send svg { width: 14px; height: 14px; stroke: currentColor; }\n" +
+            "#prog-wrap { height: 4px; background: var(--border); border-radius: 999px; display: none; margin-top: 16px; }\n" +
+            "#prog-bar { height: 100%; width: 0%; background: var(--accent); transition: width .15s; }\n" +
+            "#status { display: none; margin-top: 16px; padding: 12px 16px; border-radius: var(--radius); font-size: 13px; }\n" +
+            "#status.ok { background: var(--success-soft); color: var(--success); border: 1px solid var(--success-border); }\n" +
+            "#status.fail { background: var(--danger-soft); color: var(--danger); border: 1px solid var(--danger-border); }\n" +
+            ".file-link { color: var(--accent); text-decoration: none; display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; }\n" +
+            "footer { margin-top: 32px; font-size: 12px; color: var(--text-3); text-align: center; }\n" +
             "</style>\n" +
             "</head>\n" +
             "<body>\n" +
-            "<div class=\"page\">\n" +
+            "<div class=\"shell\">\n" +
             "<header>\n" +
-            "  <div>\n" +
-            "    <h1>Mesh <em>Node</em></h1>\n" +
-            "    <p class=\"sub\">Peer replication · SHA-256 storage</p>\n" +
+            "  <div class=\"brand\">\n" +
+            "    <div class=\"brand-mark\">M</div>\n" +
+            "    <div class=\"brand-text\"><h1>Mesh Node</h1><p>Distributed file replication</p></div>\n" +
             "  </div>\n" +
-            "  <nav class=\"head-nav\">\n" +
-            "    <a href=\"/\">Upload</a>\n" +
-            "    <a href=\"/view\">Search</a>\n" +
-            "    <a href=\"/servers\">Servers</a>\n" +
-            "  </nav>\n" +
+            "  <nav class=\"head-nav\"><a href=\"/\" class=\"active\">Upload</a></nav>\n" +
             "</header>\n" +
-            "<div id=\"node-bar\">\n" +
-            "  <div class=\"nb-pill\"><span class=\"nb-dot blue\"></span> peers <span class=\"nb-val\" id=\"nb-peers\">…</span></div>\n" +
-            "  <div class=\"nb-pill\"><span class=\"nb-dot\" id=\"nb-pk-dot\"></span> public_key.txt <span class=\"nb-val\" id=\"nb-pk\">…</span></div>\n" +
-            "  <div class=\"nb-pill\"><span class=\"nb-dot\" id=\"nb-ni-dot\"></span> node_info.txt <span class=\"nb-val\" id=\"nb-ni\">…</span></div>\n" +
+            "<div class=\"status-bar\">\n" +
+            "  <div class=\"sb-card\"><span class=\"nb-dot blue\"></span><div><div class=\"sb-label\">Peers</div><div class=\"sb-value\" id=\"nb-peers\">…</div></div></div>\n" +
+            "  <div class=\"sb-card\"><span class=\"nb-dot\" id=\"nb-pk-dot\"></span><div><div class=\"sb-label\">Public Key</div><div class=\"sb-value\" id=\"nb-pk\">…</div></div></div>\n" +
+            "  <div class=\"sb-card\"><span class=\"nb-dot\" id=\"nb-ni-dot\"></span><div><div class=\"sb-label\">Node Info</div><div class=\"sb-value\" id=\"nb-ni\">…</div></div></div>\n" +
             "</div>\n" +
-            "<div id=\"drop-zone\" tabindex=\"0\" role=\"button\" aria-label=\"Select or drop a file\">\n" +
-            "  <div class=\"dz-icon\">??</div>\n" +
-            "  <p class=\"dz-title\">Drop a file or click to select</p>\n" +
-            "  <p class=\"dz-sub\">Stored as <b>sha256.ext</b> · pushed to all peers · <b>.php</b> blocked</p>\n" +
+            "<div id=\"drop-zone\" class=\"drop\" tabindex=\"0\">\n" +
+            "  <div class=\"drop-icon\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\"><path d=\"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4\"/><polyline points=\"17 8 12 3 7 8\"/><line x1=\"12\" y1=\"3\" x2=\"12\" y2=\"15\"/></svg></div>\n" +
+            "  <p class=\"drop-title\">Drop a file or click to select</p>\n" +
+            "  <p class=\"drop-sub\"><b>1 GB</b> maximum · Replicated to peers</p>\n" +
             "</div>\n" +
-            "<input type=\"file\" id=\"file-input\">\n" +
+            "<input type=\"file\" id=\"file-input\" style=\"display:none\">\n" +
             "<div id=\"panel\">\n" +
-            "  <div class=\"panel-top\">\n" +
-            "    <div class=\"f-icon\">??</div>\n" +
-            "    <span id=\"f-name\">—</span>\n" +
-            "    <span id=\"f-size\"></span>\n" +
-            "    <button class=\"x-btn\" id=\"x-btn\" aria-label=\"Remove file\">?</button>\n" +
+            "  <div class=\"panel-head\">\n" +
+            "    <div class=\"file-chip\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\"><path d=\"M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z\"/><polyline points=\"14 2 14 8 20 8\"/></svg></div>\n" +
+            "    <span id=\"f-name\">—</span> <span id=\"f-size\"></span>\n" +
+            "    <button class=\"x-btn\" id=\"x-btn\"><svg viewBox=\"0 0 24 24\" stroke=\"currentColor\"><line x1=\"18\" y1=\"6\" x2=\"6\" y2=\"18\"/><line x1=\"6\" y1=\"6\" x2=\"18\" y2=\"18\"/></svg></button>\n" +
             "  </div>\n" +
-            "  <div class=\"meta-pills\">\n" +
-            "    <div class=\"mpill\" id=\"mpill-pk\"><svg viewBox=\"0 0 24 24\"><path d=\"M21 2l-2 2m-7.61 7.61a5.5 5.5 0 11-7.778 7.778 5.5 5.5 0 017.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4\"/></svg> public_key</div>\n" +
-            "    <input type=\"text\" id=\"pk-inline\" maxlength=\"512\" placeholder=\"public key…\" style=\"display:none;flex:1;min-width:0;padding:0.2rem 0.5rem;border:1px solid #ccc;border-radius:4px;font-family:inherit;font-size:0.78rem;outline:none;color:#333;background:#fff;transition:border-color 0.2s\" onfocus=\"this.style.borderColor='#0044cc'\" onblur=\"this.style.borderColor='#ccc'\">\n" +
-            "    <div class=\"mpill\" id=\"mpill-ni\"><svg viewBox=\"0 0 24 24\"><circle cx=\"12\" cy=\"12\" r=\"10\"/><line x1=\"12\" y1=\"8\" x2=\"12\" y2=\"12\"/><line x1=\"12\" y1=\"16\" x2=\"12.01\" y2=\"16\"/></svg> node_info</div>\n" +
-            "    <div class=\"mpill has\"><svg viewBox=\"0 0 24 24\"><path d=\"M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z\"/><polyline points=\"14 2 14 8 20 8\"/></svg> filename · size · extension</div>\n" +
+            "  <div class=\"panel-meta\">\n" +
+            "    <input type=\"text\" class=\"input-inline\" id=\"pk-inline\" maxlength=\"512\" placeholder=\"Your public key (optional)…\">\n" +
+            "    <div class=\"mpill\" id=\"mpill-ni\">node_info</div>\n" +
             "  </div>\n" +
-            "  <div class=\"panel-mid\">\n" +
-            "    <label class=\"fl\" for=\"comment-box\">Description <span style=\"color:#aaa\">(optional · max 1 KB)</span></label>\n" +
-            "    <textarea id=\"comment-box\" placeholder=\"Add an optional description for this file…\"></textarea>\n" +
-            "    <div class=\"cmeta\">\n" +
-            "      <span>Stored as “description” field</span>\n" +
-            "      <span class=\"ccount\" id=\"ccount\">0 / 1?000</span>\n" +
-            "    </div>\n" +
+            "  <div class=\"panel-body\">\n" +
+            "    <label class=\"field-label\">Description</label>\n" +
+            "    <textarea id=\"comment-box\" placeholder=\"Add an optional description...\"></textarea>\n" +
             "  </div>\n" +
-            "  <div class=\"panel-bot\">\n" +
-            "    <span class=\"peer-info\">Sending to <b id=\"peer-count\">…</b> peer(s)</span>\n" +
-            "    <button class=\"btn-send\" id=\"send-btn\">\n" +
-            "      <svg viewBox=\"0 0 24 24\"><line x1=\"22\" y1=\"2\" x2=\"11\" y2=\"13\"/><polygon points=\"22 2 15 22 11 13 2 9 22 2\"/></svg> Send to network\n" +
-            "    </button>\n" +
+            "  <div class=\"panel-foot\">\n" +
+            "    <span>Sending to <b id=\"peer-count\">…</b> peer(s)</span>\n" +
+            "    <button class=\"btn-send\" id=\"send-btn\">Send to network</button>\n" +
             "  </div>\n" +
             "</div>\n" +
             "<div id=\"prog-wrap\"><div id=\"prog-bar\"></div></div>\n" +
             "<div id=\"status\"></div>\n" +
-            "<div class=\"json-preview\">\n" +
-            "  <div class=\"json-preview-head\"><svg viewBox=\"0 0 24 24\"><path d=\"M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z\"/><polyline points=\"14 2 14 8 20 8\"/></svg> info/&lt;hash&gt;.json — stored structure</div>\n" +
-            "  <pre id=\"json-schema\">{\n" +
-            "  <span class=\"jk\">\"original_filename\"</span>: <span class=\"js\">\"photo.jpg\"</span>,\n" +
-            "  <span class=\"jk\">\"size\"</span>:              <span class=\"jn\">204800</span>,\n" +
-            "  <span class=\"jk\">\"extension\"</span>:        <span class=\"js\">\"jpg\"</span>,\n" +
-            "  <span class=\"jk\">\"public_key\"</span>:       <span class=\"js\">\"&lt;contents of public_key.txt or empty string&gt;\"</span>,\n" +
-            "  <span class=\"jk\">\"node_info\"</span>:        <span class=\"js\">\"&lt;contents of node_info.txt or empty string&gt;\"</span>,\n" +
-            "  <span class=\"jk\">\"description\"</span>:      <span class=\"js\">\"&lt;user comment or empty string&gt;\"</span>\n" +
-            "}</pre>\n" +
             "</div>\n" +
-            "</div>\n" +
-            "<footer class=\"page\">\n" +
-            "  <p>Mesh Node · files stored as sha256.ext · info JSON has 6 fixed fields</p>\n" +
-            "  <p>Java 8 (Native Standard Library)</p>\n" +
-            "</footer>\n" +
+            "<footer><p>Mesh Node · Java 8 Port · Object Oriented · 1 GB limit</p></footer>\n" +
             "<script>\n" +
-            "(function(){\n" +
-            "'use strict';\n" +
-            "const dz=document.getElementById('drop-zone'),fi=document.getElementById('file-input'),panel=document.getElementById('panel'),fName=document.getElementById('f-name'),fSize=document.getElementById('f-size'),xBtn=document.getElementById('x-btn'),commentB=document.getElementById('comment-box'),ccount=document.getElementById('ccount'),sendBtn=document.getElementById('send-btn'),peerCnt=document.getElementById('peer-count'),status=document.getElementById('status'),progWrap=document.getElementById('prog-wrap'),progBar=document.getElementById('prog-bar'),mpillPk=document.getElementById('mpill-pk'),mpillNi=document.getElementById('mpill-ni'),pkInline=document.getElementById('pk-inline');\n" +
-            "const MAX=1000,BLOCKED=['php','php3','php4','php5','php7','phtml','phar'];\n" +
-            "let file=null,ns={public_key:false,node_info:false,peers:0};\n" +
-            "fetch(window.location.href.split('?')[0]+'?node_status=1').then(r=>r.json()).then(d=>{\n" +
-            "  ns=d; document.getElementById('nb-peers').textContent=d.peers; peerCnt.textContent=d.peers;\n" +
-            "  const dot=(id,ok)=>{const el=document.getElementById(id);if(el)el.className='nb-dot '+(ok?'ok':'');};\n" +
-            "  dot('nb-pk-dot',d.public_key); dot('nb-ni-dot',d.node_info);\n" +
-            "  document.getElementById('nb-pk').textContent=d.public_key?'? found':'— missing';\n" +
-            "  document.getElementById('nb-ni').textContent=d.node_info?'? found':'— missing'; updatePills();\n" +
-            "}).catch(()=>{['nb-peers','nb-pk','nb-ni'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent='?';});peerCnt.textContent='?';});\n" +
-            "function updatePills(){mpillPk.style.display=ns.public_key?'':'none';pkInline.style.display=ns.public_key?'none':'';mpillNi.className='mpill '+(ns.node_info?'has':'');}\n" +
-            "function fmt(b){if(b<1024)return b+' B';if(b<1048576)return (b/1024).toFixed(1)+' KB';return (b/1048576).toFixed(2)+' MB';}\n" +
-            "function extOf(n){return n.split('.').pop().toLowerCase();}\n" +
-            "function setFile(f){if(!f)return;if(BLOCKED.includes(extOf(f.name))){show('fail','PHP files are not accepted.');return;}file=f;fName.textContent=f.name;fSize.textContent=fmt(f.size);panel.style.display='block';commentB.value='';updateCount();updatePills();hide();}\n" +
-            "function clear(){file=null;fi.value='';panel.style.display='none';commentB.value='';pkInline.value='';}\n" +
-            "dz.addEventListener('click',()=>fi.click()); dz.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' ')fi.click();});\n" +
-            "fi.addEventListener('change',()=>{if(fi.files[0])setFile(fi.files[0]);}); xBtn.addEventListener('click',clear);\n" +
-            "['dragenter','dragover'].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.add('over');}));\n" +
-            "['dragleave','drop'].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.remove('over');}));\n" +
-            "dz.addEventListener('drop',e=>{if(e.dataTransfer.files[0])setFile(e.dataTransfer.files[0]);});\n" +
-            "function updateCount(){const len=new TextEncoder().encode(commentB.value).length;ccount.textContent=len.toLocaleString()+' / '+MAX.toLocaleString();ccount.classList.toggle('over',len>MAX);}\n" +
-            "commentB.addEventListener('input',updateCount);\n" +
-            "function show(type,html){status.className=type;status.innerHTML=html;status.style.display='block';} function hide(){status.style.display='none';}\n" +
-            "sendBtn.addEventListener('click',()=>{\n" +
-            "  if(!file)return; if(new TextEncoder().encode(commentB.value).length>MAX){show('fail','Description exceeds the 1 KB limit.');return;}\n" +
-            "  const fd=new FormData(); fd.append('file',file); fd.append('comment',commentB.value);\n" +
-            "  if(!ns.public_key&&pkInline.value.trim()!=='')fd.append('public_key',pkInline.value.trim().slice(0,512));\n" +
-            "  const xhr=new XMLHttpRequest(); sendBtn.classList.add('busy'); sendBtn.lastChild.textContent=' Transmitting…';\n" +
-            "  progWrap.style.display='block'; progBar.style.width='0%'; hide();\n" +
-            "  xhr.upload.addEventListener('progress',e=>{if(e.lengthComputable)progBar.style.width=Math.round(e.loaded/e.total*100)+'%';});\n" +
-            "  xhr.addEventListener('load',()=>{\n" +
-            "    sendBtn.classList.remove('busy'); sendBtn.lastChild.textContent=' Send to network';\n" +
-            "    progBar.style.width='100%'; setTimeout(()=>{progWrap.style.display='none';progBar.style.width='0%';},700);\n" +
-            "    let res; try{const raw=xhr.responseText.replace(/^[\\s\\S]*?(\\{)/,'$1');res=JSON.parse(raw);}catch(e){\n" +
-            "      const m=xhr.responseText.match(/\"filename\"\\s*:\\s*\"([^\"]+)\"/); if(m){showLink(m[1],false);clear();return;}\n" +
-            "      show('fail','Unexpected server response.');return;\n" +
-            "    }\n" +
-            "    if(!res.ok){show('fail','? '+(res.error||'Unknown error'));return;} showLink(res.filename,!!res.existed); clear();\n" +
-            "  });\n" +
-            "  xhr.addEventListener('error',()=>{sendBtn.classList.remove('busy');sendBtn.lastChild.textContent=' Send to network';show('fail','? Network error.');progWrap.style.display='none';});\n" +
-            "  xhr.open('POST',window.location.href.split('?')[0]); xhr.send(fd);\n" +
+            "const dz = document.getElementById('drop-zone'), fi = document.getElementById('file-input');\n" +
+            "const panel = document.getElementById('panel'), fName = document.getElementById('f-name');\n" +
+            "const fSize = document.getElementById('f-size'), xBtn = document.getElementById('x-btn');\n" +
+            "const commentB = document.getElementById('comment-box'), sendBtn = document.getElementById('send-btn');\n" +
+            "const peerCnt = document.getElementById('peer-count'), status = document.getElementById('status');\n" +
+            "const progWrap = document.getElementById('prog-wrap'), progBar = document.getElementById('prog-bar');\n" +
+            "const pkInline = document.getElementById('pk-inline');\n" +
+            "let file = null;\n" +
+            "fetch('/?node_status=1').then(r=>r.json()).then(d=>{\n" +
+            "  document.getElementById('nb-peers').textContent = d.peers; peerCnt.textContent = d.peers;\n" +
+            "  if(d.public_key) document.getElementById('nb-pk-dot').classList.add('ok');\n" +
+            "  if(d.node_info) { document.getElementById('nb-ni-dot').classList.add('ok'); document.getElementById('mpill-ni').classList.add('has'); }\n" +
+            "  document.getElementById('nb-pk').textContent = d.public_key?'Found':'Missing';\n" +
+            "  document.getElementById('nb-ni').textContent = d.node_info?'Found':'Missing';\n" +
             "});\n" +
-            "function showLink(filename,existed){\n" +
-            "  const fileUrl='files/'+esc(filename), note=existed?' <span style=\"opacity:0.6\">(already stored)</span>':'';\n" +
-            "  show('ok','? File stored'+note+'<div class=\"hash-line\"><a class=\"file-link\" href=\"'+fileUrl+'\" target=\"_blank\" rel=\"noopener noreferrer\"><svg viewBox=\"0 0 24 24\"><path d=\"M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6\"/><polyline points=\"15 3 21 3 21 9\"/><line x1=\"10\" y1=\"14\" x2=\"21\" y2=\"3\"/></svg> Open file in new tab</a></div>');\n" +
-            "}\n" +
-            "function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\"/g,'&quot;');}\n" +
-            "})();\n" +
+            "function fmt(b){ return b<1048576?(b/1024).toFixed(1)+' KB':(b/1048576).toFixed(2)+' MB'; }\n" +
+            "function setFile(f){ if(f.size>1073741824){ show('fail','File exceeds 1GB.'); return; } file=f; fName.textContent=f.name; fSize.textContent=fmt(f.size); panel.style.display='block'; hide(); }\n" +
+            "function clear(){ file=null; fi.value=''; panel.style.display='none'; }\n" +
+            "dz.onclick = () => fi.click();\n" +
+            "fi.onchange = () => { if(fi.files[0]) setFile(fi.files[0]); };\n" +
+            "xBtn.onclick = clear;\n" +
+            "dz.ondragover = e => { e.preventDefault(); dz.classList.add('over'); };\n" +
+            "dz.ondragleave = e => { e.preventDefault(); dz.classList.remove('over'); };\n" +
+            "dz.ondrop = e => { e.preventDefault(); dz.classList.remove('over'); if(e.dataTransfer.files[0]) setFile(e.dataTransfer.files[0]); };\n" +
+            "function show(t,h){ status.className=t; status.innerHTML=h; status.style.display='block'; }\n" +
+            "function hide(){ status.style.display='none'; }\n" +
+            "sendBtn.onclick = () => {\n" +
+            "  if(!file) return;\n" +
+            "  const fd = new FormData(); fd.append('file', file); fd.append('description', commentB.value); fd.append('public_key', pkInline.value);\n" +
+            "  const xhr = new XMLHttpRequest(); sendBtn.classList.add('busy'); sendBtn.textContent='Transmitting…';\n" +
+            "  progWrap.style.display='block'; progBar.style.width='0%'; hide();\n" +
+            "  xhr.upload.onprogress = e => { if(e.lengthComputable) progBar.style.width = Math.round(e.loaded/e.total*100)+'%'; };\n" +
+            "  xhr.onload = () => {\n" +
+            "    sendBtn.classList.remove('busy'); sendBtn.textContent='Send to network';\n" +
+            "    progBar.style.width='100%'; setTimeout(()=>progWrap.style.display='none', 700);\n" +
+            "    try { var res = JSON.parse(xhr.responseText); } catch(e){ show('fail','Unexpected server response.'); return; }\n" +
+            "    if(!res.ok) { show('fail',res.error); return; }\n" +
+            "    show('ok', '? File stored '+(res.existed?'(already existed)':'')+'<br><a class=\"file-link\" target=\"_blank\" href=\"/files/'+res.filename+'\">Open File</a>'); clear();\n" +
+            "  };\n" +
+            "  xhr.onerror = () => { sendBtn.classList.remove('busy'); show('fail','Network Error.'); };\n" +
+            "  xhr.open('POST', '/'); xhr.send(fd);\n" +
+            "};\n" +
             "</script>\n" +
             "</body>\n" +
             "</html>";
