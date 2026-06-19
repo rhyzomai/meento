@@ -1,3 +1,6 @@
+http://localhost/
+https://localhost/meento/
+https://meentos.netlify.app/
 http://meento.atwebpages.com/
 https://meento.neocities.org/
 https://geocities.ws/meento/
