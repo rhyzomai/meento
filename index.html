@@ -339,7 +339,7 @@
   <header>
     <div class="promptline">
       <span class="dot"></span>
-      meshareprompt — single file, zero dependencies, runs anywhere java 8 runs
+      Meento Share (aka meshare)
     </div>
   </header>
 
@@ -347,16 +347,29 @@
     <p class="eyebrow">java MesharePrompt</p>
     <h1>Search a network of<br>file servers from<br>one prompt<span class="blink"></span></h1>
     <p class="lede">
+
+    <div class="cta-row">
+      <a class="btn btn-primary" href="index.php">Upload file</a>
+      <a class="btn btn-ghost" href="#commands">See the commands</a>
+    </div>
+<br><br>
+The goal of Meento is to enable static websites to make their files available for search and download easily. Each file is saved using its hash as the name, and additional information is stored in a JSON file.
+<br><br>
+In other words, think of a simplified network where all transfers occur directly over the HTTP protocol. The "index.php" (or main page) replicates all files it receives directly via the POST method to a list of servers. Searching is performed by requesting the list of all JSON files that each server has. To avoid flooding or overloading (for example, making 200 requests to a server that has 200 JSON files), the user or client does not request the files and hashes it has already downloaded, but rather loads their information locally.
+<br><br>
+There are two interesting fields in the JSON file: "public_key" and "server_public_key". There is no concrete implementation of how they should work, but it is presumed that "public_key" should be a key inserted by the user themselves when sending a file to ensure they are the owner. "server_public_key" should be the key of the server hosting the file. Tools and mechanisms for consensus or rewards can be created based on this data, at the discretion of the user, the server, or third parties.
+<br><br>
+Aiming for the healthy long-term growth of the project, our license (MEENTO1.0) is not open-source but merely makes the code available for audit and verification. You may freely share, host, and replicate the code, and even profit from advertisements, as sell it or other services, as long as you do not modify the code. You may make modifications to the code provided that you use the same license and do not generate any form of profit (strictly for personal or institutional use).
+<br><br>
+Using Meento is very easy!
+<br><br>
       <strong>MesharePrompt</strong> is a single-file Java 8 console program
       that queries every server in your list, matches files by their
       metadata, and downloads them only after verifying the SHA-256 hash
       actually matches the filename. No GUI, no external libraries, no
       build tooling — just a <code>&gt;</code> prompt.
     </p>
-    <div class="cta-row">
-      <a class="btn btn-primary" href="index.php">Upload file</a>
-      <a class="btn btn-ghost" href="#commands">See the commands</a>
-    </div>
+
   </section>
 
   <div class="terminal" role="img" aria-label="Example terminal session searching for cat and downloading a result">

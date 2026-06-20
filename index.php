@@ -1,7 +1,7 @@
 <?php declare(strict_types=1);
 
 // -------------------------------------------------------------------------------
-//  MESH NODE — file replication over HTTP/HTTPS
+//  Meento Share — file replication over HTTP/HTTPS
 //  Single-file PHP 7+ application
 // -------------------------------------------------------------------------------
 
@@ -350,9 +350,9 @@ MeshNode::handleRequest();
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="description" content="Mesh Node — distributed file replication over HTTP/HTTPS">
+<meta name="description" content="Meento Share  — distributed file replication over HTTP/HTTPS">
 <meta name="theme-color" content="#4f46e5">
-<title>Mesh Node — Distributed File Replication</title>
+<title>Meento Share - Distributed File Replication</title>
 <style>
 /* --- Design tokens --------------------------------------------------------- */
 :root {
@@ -757,22 +757,15 @@ footer .php-v { font-family: var(--mono); }
   <div class="brand">
     <div class="brand-mark">M</div>
     <div class="brand-text">
-      <h1>Mesh Node</h1>
+      <h1>Meento Share </h1>
       <p>Distributed file replication</p>
     </div>
   </div>
   <nav class="head-nav">
-    <a href="index.php" class="active">Upload</a>
-    <a href="view.php">Search</a>
-    <a href="user_files.php">Users</a>
+    <a href="index.php" class="active">Index</a>
     <a href="servers.php">Servers</a>
-    <a href="panel.php">Panel</a>
-    <a href="sync.php">Sync</a>
-    <a href="dashboard.php">Dashboard</a>
-    <a href="indexer.php">Indexer</a>
-    <a href="feed_full.php">Feed</a>
-    <a href="index_full.php">Account</a>
-    <a href="meento.php">Meento</a>  </nav>
+    <a href="index.html">About</a>
+    <a href="https://t.me/meentoshare">Meento</a>  </nav>
 </header>
 
 <div class="status-bar">
@@ -893,7 +886,7 @@ footer .php-v { font-family: var(--mono); }
 
 </div>
 <footer>
-  <p>Mesh Node · Object Oriented · 1 GB limit · Strict PHP 7+</p>
+  <p>Meento Share  · Object Oriented · 1 GB limit · Strict PHP 7+</p>
   <p class="php-v">PHP <?php echo PHP_MAJOR_VERSION.'.'.PHP_MINOR_VERSION; ?></p>
 </footer>
 
